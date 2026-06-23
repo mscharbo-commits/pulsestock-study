@@ -6,283 +6,258 @@
 <title>PulseStock Study</title>
 <style>
   :root {
-    --bg: #0a0d12;
-    --surface: #111620;
-    --surface2: #1a2035;
-    --border: #1e2a40;
-    --accent-a: #3b82f6;
-    --accent-b: #a855f7;
-    --accent-c: #10b981;
-    --warn: #f59e0b;
-    --danger: #ef4444;
-    --text: #e2e8f0;
-    --muted: #64748b;
-    --label: #94a3b8;
-    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-    --font-ui: 'Inter', system-ui, sans-serif;
+    --bg:#0a0d12; --surface:#111620; --surface2:#1a2035; --border:#1e2a40;
+    --accent-a:#3b82f6; --accent-b:#a855f7; --accent-c:#10b981;
+    --warn:#f59e0b; --danger:#ef4444;
+    --text:#e2e8f0; --muted:#64748b; --label:#94a3b8;
+    --font-mono:'JetBrains Mono','Fira Code',monospace;
+    --font-ui:'Inter',system-ui,sans-serif;
   }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:var(--bg); color:var(--text); font-family:var(--font-ui); min-height:100vh; }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:var(--font-ui);min-height:100vh;}
 
-  /* ─── AUTH GATE ──────────────────────────────────── */
-  #auth-gate {
-    min-height:100vh; display:flex; align-items:center; justify-content:center;
-    background: radial-gradient(ellipse at 50% 0%, #1a2a4a 0%, var(--bg) 60%);
-  }
-  .auth-card {
-    background:var(--surface); border:1px solid var(--border); border-radius:16px;
-    padding:48px 40px; width:360px; text-align:center;
-  }
-  .auth-logo { font-size:11px; letter-spacing:0.25em; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
-  .auth-title { font-size:22px; font-weight:700; margin-bottom:4px; }
-  .auth-sub { font-size:13px; color:var(--muted); margin-bottom:32px; }
-  .auth-badge {
-    display:inline-flex; align-items:center; gap:6px; background:#1a2035;
-    border:1px solid #2a3a5a; border-radius:6px; padding:4px 10px;
-    font-size:11px; color:var(--muted); margin-bottom:32px;
-  }
-  .auth-badge::before { content:'🔒'; font-size:10px; }
-  .auth-input {
-    width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px;
-    padding:12px 16px; color:var(--text); font-size:15px; outline:none; margin-bottom:12px;
-    font-family:var(--font-ui); letter-spacing:0.05em;
-    transition: border-color 0.2s;
-  }
-  .auth-input:focus { border-color:var(--accent-a); }
-  .auth-btn {
-    width:100%; background:var(--accent-a); color:#fff; border:none; border-radius:8px;
-    padding:13px; font-size:14px; font-weight:600; cursor:pointer; transition:opacity 0.2s;
-  }
-  .auth-btn:hover { opacity:0.85; }
-  .auth-err { color:var(--danger); font-size:12px; margin-top:8px; min-height:18px; }
+  /* AUTH */
+  #auth-gate{min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 0%,#1a2a4a 0%,var(--bg) 60%);}
+  .auth-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    padding:48px 40px;width:360px;text-align:center;}
+  .auth-logo{font-size:11px;letter-spacing:0.25em;color:var(--muted);text-transform:uppercase;margin-bottom:8px;}
+  .auth-title{font-size:22px;font-weight:700;margin-bottom:4px;}
+  .auth-sub{font-size:13px;color:var(--muted);margin-bottom:28px;}
+  .auth-badge{display:inline-flex;align-items:center;gap:6px;background:#1a2035;
+    border:1px solid #2a3a5a;border-radius:6px;padding:4px 10px;
+    font-size:11px;color:var(--muted);margin-bottom:28px;}
+  .auth-input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+    padding:12px 16px;color:var(--text);font-size:15px;outline:none;margin-bottom:12px;
+    font-family:var(--font-ui);letter-spacing:0.05em;transition:border-color 0.2s;}
+  .auth-input:focus{border-color:var(--accent-a);}
+  .auth-btn{width:100%;background:var(--accent-a);color:#fff;border:none;border-radius:8px;
+    padding:13px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s;}
+  .auth-btn:hover{opacity:0.85;}
+  .auth-err{color:var(--danger);font-size:12px;margin-top:8px;min-height:18px;}
 
-  /* ─── MAIN APP ───────────────────────────────────── */
-  #app { display:none; }
-  .topbar {
-    display:flex; align-items:center; gap:16px; padding:0 24px;
-    height:56px; background:var(--surface); border-bottom:1px solid var(--border);
-    position:sticky; top:0; z-index:100;
-  }
-  .topbar-logo { font-size:13px; font-weight:700; letter-spacing:0.05em; }
-  .topbar-logo span { color:var(--accent-a); }
-  .topbar-tag {
-    font-size:10px; letter-spacing:0.15em; text-transform:uppercase; color:var(--muted);
-    background:var(--surface2); border:1px solid var(--border); border-radius:4px; padding:2px 8px;
-  }
-  .topbar-right { margin-left:auto; display:flex; align-items:center; gap:12px; }
-  .status-dot { width:7px; height:7px; border-radius:50%; background:var(--accent-c); }
-  .status-label { font-size:12px; color:var(--muted); }
+  /* APP SHELL */
+  #app{display:none;}
+  .topbar{display:flex;align-items:center;gap:16px;padding:0 24px;height:56px;
+    background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
+  .topbar-logo{font-size:13px;font-weight:700;letter-spacing:0.05em;}
+  .topbar-logo span{color:var(--accent-a);}
+  .topbar-tag{font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);
+    background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px;}
+  .status-dot{width:7px;height:7px;border-radius:50%;background:var(--accent-c);
+    box-shadow:0 0 6px var(--accent-c);animation:pulse 2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+  .status-label{font-size:12px;color:var(--muted);}
 
-  /* Tabs */
-  .tabs { display:flex; gap:2px; padding:16px 24px 0; border-bottom:1px solid var(--border); background:var(--surface); }
-  .tab {
-    padding:10px 20px; font-size:13px; font-weight:500; cursor:pointer;
-    border-bottom:2px solid transparent; color:var(--muted); transition:all 0.15s;
-    border-radius:6px 6px 0 0;
-  }
-  .tab:hover { color:var(--text); }
-  .tab.active { color:var(--text); border-bottom-color:var(--accent-a); }
-  .tab-badge {
-    display:inline-flex; align-items:center; justify-content:center;
-    background:var(--surface2); border-radius:10px; padding:1px 6px;
-    font-size:10px; margin-left:6px; color:var(--label);
-  }
+  /* TABS */
+  .tabs{display:flex;gap:2px;padding:16px 24px 0;border-bottom:1px solid var(--border);
+    background:var(--surface);overflow-x:auto;}
+  .tab{padding:10px 18px;font-size:13px;font-weight:500;cursor:pointer;
+    border-bottom:2px solid transparent;color:var(--muted);transition:all 0.15s;
+    border-radius:6px 6px 0 0;white-space:nowrap;}
+  .tab:hover{color:var(--text);}
+  .tab.active{color:var(--text);border-bottom-color:var(--accent-a);}
+  .tab-badge{display:inline-flex;align-items:center;justify-content:center;
+    background:var(--surface2);border-radius:10px;padding:1px 6px;
+    font-size:10px;margin-left:6px;color:var(--label);}
 
-  /* Content */
-  .content { padding:24px; max-width:1400px; margin:0 auto; }
-  .panel { display:none; }
-  .panel.active { display:block; }
+  /* CONTENT */
+  .content{padding:24px;max-width:1400px;margin:0 auto;}
+  .panel{display:none;}.panel.active{display:block;}
 
-  /* Cards */
-  .card {
-    background:var(--surface); border:1px solid var(--border); border-radius:12px;
-    padding:20px;
-  }
-  .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
-  .card-title { font-size:14px; font-weight:600; color:var(--label); text-transform:uppercase; letter-spacing:0.06em; }
+  /* CARDS */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;}
+  .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .card-title{font-size:14px;font-weight:600;color:var(--label);text-transform:uppercase;letter-spacing:0.06em;}
 
-  /* Stats row */
-  .stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
-  .stat-card {
-    background:var(--surface); border:1px solid var(--border); border-radius:10px;
-    padding:16px 20px;
-  }
-  .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:6px; }
-  .stat-value { font-size:26px; font-weight:700; font-family:var(--font-mono); }
-  .stat-sub { font-size:11px; color:var(--muted); margin-top:4px; }
-  .green { color:var(--accent-c); }
-  .red { color:var(--danger); }
-  .blue { color:var(--accent-a); }
-  .purple { color:var(--accent-b); }
+  /* STATS */
+  .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;}
+  .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;}
+  .stat-value{font-size:24px;font-weight:700;font-family:var(--font-mono);}
+  .stat-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+  .green{color:var(--accent-c);}.red{color:var(--danger);}.blue{color:var(--accent-a);}.purple{color:var(--accent-b);}.amber{color:var(--warn);}
 
-  /* Tables */
-  .table-wrap { overflow-x:auto; }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  thead th {
-    text-align:left; padding:10px 12px; color:var(--muted); font-weight:500;
-    font-size:11px; text-transform:uppercase; letter-spacing:0.06em;
-    border-bottom:1px solid var(--border);
-  }
-  tbody tr { border-bottom:1px solid #111820; transition:background 0.1s; }
-  tbody tr:hover { background:var(--surface2); }
-  tbody td { padding:11px 12px; color:var(--text); }
-  .mono { font-family:var(--font-mono); }
+  /* TABLE */
+  .table-wrap{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;padding:10px 12px;color:var(--muted);font-weight:500;font-size:11px;
+    text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border);}
+  tbody tr{border-bottom:1px solid #111820;transition:background 0.1s;}
+  tbody tr:hover{background:var(--surface2);}
+  tbody td{padding:11px 12px;color:var(--text);}
+  .mono{font-family:var(--font-mono);}
 
-  /* Badges */
-  .badge {
-    display:inline-block; padding:2px 8px; border-radius:5px;
-    font-size:10px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase;
-  }
-  .badge-buy { background:#0f2d1a; color:#34d399; }
-  .badge-sell { background:#2d1010; color:#f87171; }
-  .badge-hold { background:#1a1d10; color:#d4d47a; }
-  .badge-open { background:#0f1f35; color:#60a5fa; }
-  .badge-closed { background:#1a1a1a; color:#64748b; }
-  .badge-win { background:#0f2d1a; color:#34d399; }
-  .badge-loss { background:#2d1010; color:#f87171; }
+  /* BADGES */
+  .badge{display:inline-block;padding:2px 8px;border-radius:5px;
+    font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;}
+  .badge-buy{background:#0f2d1a;color:#34d399;}
+  .badge-sell{background:#2d1010;color:#f87171;}
+  .badge-hold{background:#1a1d10;color:#d4d47a;}
+  .badge-open{background:#0f1f35;color:#60a5fa;}
+  .badge-closed{background:#1a1a1a;color:#64748b;}
+  .badge-win{background:#0f2d1a;color:#34d399;}
+  .badge-loss{background:#2d1010;color:#f87171;}
+  .badge-warning{background:#2a1f00;color:#fbbf24;}
 
-  /* Confidence meter */
-  .conf-bar { display:flex; align-items:center; gap:8px; }
-  .conf-track { flex:1; height:4px; background:var(--border); border-radius:2px; }
-  .conf-fill { height:100%; border-radius:2px; background:var(--accent-b); }
-  .conf-val { font-size:11px; font-family:var(--font-mono); color:var(--label); width:32px; text-align:right; }
+  /* CONFIDENCE BAR */
+  .conf-bar{display:flex;align-items:center;gap:8px;}
+  .conf-track{flex:1;height:4px;background:var(--border);border-radius:2px;}
+  .conf-fill{height:100%;border-radius:2px;background:var(--accent-b);}
+  .conf-val{font-size:11px;font-family:var(--font-mono);color:var(--label);width:32px;text-align:right;}
 
-  /* Pick cards (Portfolio B) */
-  .pick-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:16px; }
-  .pick-card {
-    background:var(--surface); border:1px solid var(--border); border-radius:12px;
-    padding:18px; cursor:pointer; transition:border-color 0.15s;
-  }
-  .pick-card:hover { border-color:var(--accent-b); }
-  .pick-card-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
-  .pick-ticker { font-size:18px; font-weight:800; font-family:var(--font-mono); }
-  .pick-date { font-size:11px; color:var(--muted); }
-  .pick-reasoning { font-size:12px; color:var(--label); line-height:1.6; margin-bottom:12px; }
-  .pick-risk {
-    background:#1a1220; border:1px solid #2a1a35; border-radius:6px;
-    padding:8px 10px; font-size:11px; color:#c084fc; margin-bottom:12px;
-  }
-  .pick-risk::before { content:'⚠ Key Risk: '; font-weight:600; }
-  .pick-cot-toggle { font-size:11px; color:var(--accent-a); cursor:pointer; }
-  .pick-cot { font-size:11px; color:var(--muted); line-height:1.7; margin-top:8px; display:none; white-space:pre-wrap; }
-  .pick-cot.open { display:block; }
+  /* PICK GRID (Portfolio B) */
+  .pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;}
+  .pick-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:18px;cursor:pointer;transition:border-color 0.15s;}
+  .pick-card:hover{border-color:var(--accent-b);}
+  .pick-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+  .pick-ticker{font-size:18px;font-weight:800;font-family:var(--font-mono);}
+  .pick-date{font-size:11px;color:var(--muted);}
+  .pick-reasoning{font-size:12px;color:var(--label);line-height:1.6;margin-bottom:12px;}
+  .pick-risk{background:#1a1220;border:1px solid #2a1a35;border-radius:6px;
+    padding:8px 10px;font-size:11px;color:#c084fc;margin-bottom:12px;}
+  .pick-risk::before{content:'⚠ Risk: ';font-weight:600;}
 
-  /* Compare view */
-  .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  .compare-col-header {
-    display:flex; align-items:center; gap:10px; margin-bottom:12px;
-    padding-bottom:12px; border-bottom:1px solid var(--border);
-  }
-  .col-a-dot { width:10px; height:10px; border-radius:50%; background:var(--accent-a); }
-  .col-b-dot { width:10px; height:10px; border-radius:50%; background:var(--accent-b); }
-  .col-label { font-size:13px; font-weight:600; }
-  .col-sublabel { font-size:11px; color:var(--muted); }
-  .divergence-banner {
-    background:#1a1220; border:1px solid #3b1f50; border-radius:8px;
-    padding:12px 16px; margin-bottom:16px; font-size:12px; color:#c084fc;
-    display:flex; align-items:flex-start; gap:10px;
-  }
-  .divergence-banner .icon { font-size:16px; flex-shrink:0; }
+  /* COMPARE */
+  .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .compare-col-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;
+    padding-bottom:12px;border-bottom:1px solid var(--border);}
+  .col-a-dot{width:10px;height:10px;border-radius:50%;background:var(--accent-a);}
+  .col-b-dot{width:10px;height:10px;border-radius:50%;background:var(--accent-b);}
+  .col-label{font-size:13px;font-weight:600;}
+  .col-sublabel{font-size:11px;color:var(--muted);}
+  .divergence-banner{background:#1a1220;border:1px solid #3b1f50;border-radius:8px;
+    padding:12px 16px;margin-bottom:12px;font-size:12px;color:#c084fc;
+    display:flex;align-items:flex-start;gap:10px;}
 
-  /* Critic */
-  .critique-card {
-    background:var(--surface); border:1px solid var(--border); border-radius:12px;
-    padding:20px; margin-bottom:12px;
-  }
-  .critique-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
-  .critique-ticker { font-size:16px; font-weight:700; font-family:var(--font-mono); }
-  .critique-verdict { font-size:12px; }
-  .mistake-cluster {
-    background:#1a1a10; border:1px solid #2a2a1a; border-radius:8px;
-    padding:14px 16px; margin-bottom:10px;
-  }
-  .cluster-label { font-size:12px; font-weight:600; color:var(--warn); margin-bottom:6px; }
-  .cluster-desc { font-size:12px; color:var(--label); line-height:1.6; }
+  /* BUTTONS */
+  .gen-btn{background:linear-gradient(135deg,#6d28d9,#a855f7);color:#fff;border:none;
+    border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;
+    display:flex;align-items:center;gap:8px;transition:opacity 0.2s;white-space:nowrap;}
+  .gen-btn:hover{opacity:0.85;}
+  .gen-btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .gen-btn .spinner{width:13px;height:13px;border:2px solid rgba(255,255,255,0.3);
+    border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:none;}
+  .gen-btn.loading .spinner{display:block;}
+  @keyframes spin{to{transform:rotate(360deg)}}
 
-  /* Generate button */
-  .gen-btn {
-    background: linear-gradient(135deg, #6d28d9, #a855f7);
-    color:#fff; border:none; border-radius:8px; padding:11px 20px;
-    font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px;
-    transition:opacity 0.2s;
-  }
-  .gen-btn:hover { opacity:0.85; }
-  .gen-btn:disabled { opacity:0.4; cursor:not-allowed; }
-  .gen-btn .spinner {
-    width:14px; height:14px; border:2px solid rgba(255,255,255,0.3);
-    border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; display:none;
-  }
-  .gen-btn.loading .spinner { display:block; }
-  @keyframes spin { to { transform:rotate(360deg); } }
+  .action-btn{background:var(--surface2);color:var(--label);border:1px solid var(--border);
+    border-radius:8px;padding:9px 16px;font-size:12px;font-weight:600;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;transition:all 0.15s;}
+  .action-btn:hover{border-color:var(--accent-a);color:var(--text);}
+  .action-btn:disabled{opacity:0.4;cursor:not-allowed;}
 
-  /* Toast */
-  #toast {
-    position:fixed; bottom:24px; right:24px; background:var(--surface);
-    border:1px solid var(--border); border-radius:8px; padding:12px 18px;
-    font-size:13px; color:var(--text); opacity:0; transform:translateY(8px);
-    transition:all 0.2s; pointer-events:none; z-index:999;
+  /* LEARNING PANEL SPECIFICS */
+  .learning-loop-diagram{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;
   }
-  #toast.show { opacity:1; transform:translateY(0); }
+  .loop-node{background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+    padding:14px;text-align:center;position:relative;}
+  .loop-node-icon{font-size:20px;margin-bottom:6px;}
+  .loop-node-title{font-size:12px;font-weight:700;margin-bottom:4px;}
+  .loop-node-desc{font-size:11px;color:var(--muted);line-height:1.5;}
+  .loop-node.active-node{border-color:var(--accent-b);background:#1a1230;}
 
-  /* Loading state */
-  .skeleton {
-    background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
-    background-size:200% 100%; animation:shimmer 1.5s infinite; border-radius:6px; height:14px;
-  }
-  @keyframes shimmer { to { background-position:-200% 0; } }
+  .calibration-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:12px;}
+  .cal-cell{background:var(--surface2);border-radius:8px;padding:12px;text-align:center;}
+  .cal-bucket{font-size:12px;font-weight:700;font-family:var(--font-mono);color:var(--accent-b);}
+  .cal-actual{font-size:18px;font-weight:700;font-family:var(--font-mono);margin:4px 0;}
+  .cal-label{font-size:10px;color:var(--muted);}
+  .cal-good{color:var(--accent-c);}
+  .cal-bad{color:var(--danger);}
 
-  /* Empty state */
-  .empty-state { text-align:center; padding:60px 20px; color:var(--muted); }
-  .empty-icon { font-size:36px; margin-bottom:12px; }
-  .empty-title { font-size:15px; font-weight:600; color:var(--label); margin-bottom:6px; }
-  .empty-desc { font-size:13px; }
+  .regime-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;
+    border-radius:20px;font-size:13px;font-weight:600;border:1px solid;}
+  .regime-bull-low{background:#0f2d1a;border-color:#1a5a35;color:#34d399;}
+  .regime-bull-high{background:#1a2010;border-color:#3a4a20;color:#a3e635;}
+  .regime-bear-low{background:#2a1a0a;border-color:#5a3a1a;color:#fb923c;}
+  .regime-bear-high{background:#2d1010;border-color:#5a2020;color:#f87171;}
 
-  /* Split pane for CoT */
-  .modal-overlay {
-    position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200;
-    display:none; align-items:center; justify-content:center; padding:24px;
-  }
-  .modal-overlay.open { display:flex; }
-  .modal {
-    background:var(--surface); border:1px solid var(--border); border-radius:14px;
-    width:100%; max-width:680px; max-height:85vh; overflow-y:auto; padding:28px;
-  }
-  .modal-close { float:right; cursor:pointer; color:var(--muted); font-size:18px; }
-  .modal-ticker { font-size:22px; font-weight:800; font-family:var(--font-mono); margin-bottom:4px; }
-  .modal-section { margin-top:18px; }
-  .modal-section-title { font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); margin-bottom:8px; }
-  .modal-body { font-size:13px; color:var(--label); line-height:1.75; }
-  .modal-risk { background:#1a1220; border:1px solid #2a1a35; border-radius:6px; padding:10px 14px; font-size:13px; color:#c084fc; }
+  .factor-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);}
+  .factor-name{font-size:13px;font-weight:500;flex:1;}
+  .factor-weight-bar{width:120px;height:6px;background:var(--border);border-radius:3px;}
+  .factor-weight-fill{height:100%;border-radius:3px;background:var(--accent-b);}
+  .factor-weight-val{font-size:12px;font-family:var(--font-mono);color:var(--label);width:36px;text-align:right;}
+  .factor-trend{font-size:11px;width:40px;text-align:right;}
 
-  /* Responsive */
-  @media(max-width:768px) {
-    .compare-grid { grid-template-columns:1fr; }
-    .pick-grid { grid-template-columns:1fr; }
-    .stats-row { grid-template-columns:repeat(2,1fr); }
-    .content { padding:16px; }
+  .memory-rule{background:var(--surface2);border-left:3px solid var(--accent-b);
+    border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:8px;}
+  .memory-rule-text{font-size:13px;color:var(--text);line-height:1.6;}
+  .memory-rule-meta{font-size:11px;color:var(--muted);margin-top:4px;}
+
+  .critique-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:20px;margin-bottom:12px;}
+  .critique-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+  .critique-ticker{font-size:16px;font-weight:700;font-family:var(--font-mono);}
+  .critique-levels{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;}
+  .critique-level-tag{font-size:10px;padding:2px 8px;border-radius:4px;
+    background:var(--surface2);border:1px solid var(--border);color:var(--muted);}
+
+  .mistake-cluster{background:#1a1a10;border:1px solid #2a2a1a;border-radius:8px;
+    padding:14px 16px;margin-bottom:10px;}
+  .cluster-label{font-size:12px;font-weight:600;color:var(--warn);margin-bottom:6px;}
+  .cluster-desc{font-size:12px;color:var(--label);line-height:1.6;}
+
+  /* MODAL */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:200;
+    display:none;align-items:center;justify-content:center;padding:24px;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    width:100%;max-width:700px;max-height:88vh;overflow-y:auto;padding:28px;}
+  .modal-close{float:right;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;}
+  .modal-ticker{font-size:22px;font-weight:800;font-family:var(--font-mono);margin-bottom:4px;}
+  .modal-section{margin-top:18px;}
+  .modal-section-title{font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:8px;}
+  .modal-body{font-size:13px;color:var(--label);line-height:1.75;}
+  .modal-risk{background:#1a1220;border:1px solid #2a1a35;border-radius:6px;padding:10px 14px;font-size:13px;color:#c084fc;}
+  .modal-cot{font-size:12px;color:var(--muted);line-height:1.75;white-space:pre-wrap;
+    background:var(--surface2);border-radius:8px;padding:14px;}
+
+  /* TOAST */
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--surface);
+    border:1px solid var(--border);border-radius:8px;padding:12px 18px;
+    font-size:13px;color:var(--text);opacity:0;transform:translateY(8px);
+    transition:all 0.2s;pointer-events:none;z-index:999;max-width:360px;}
+  #toast.show{opacity:1;transform:translateY(0);}
+
+  /* EMPTY STATE */
+  .empty-state{text-align:center;padding:60px 20px;color:var(--muted);}
+  .empty-icon{font-size:36px;margin-bottom:12px;}
+  .empty-title{font-size:15px;font-weight:600;color:var(--label);margin-bottom:6px;}
+  .empty-desc{font-size:13px;}
+
+  /* RESPONSIVE */
+  @media(max-width:768px){
+    .compare-grid{grid-template-columns:1fr;}
+    .pick-grid{grid-template-columns:1fr;}
+    .stats-row{grid-template-columns:repeat(2,1fr);}
+    .content{padding:16px;}
+    .learning-loop-diagram{grid-template-columns:1fr;}
   }
 </style>
 </head>
 <body>
 
-<!-- AUTH GATE -->
+<!-- AUTH -->
 <div id="auth-gate">
   <div class="auth-card">
     <div class="auth-logo">PulseStock</div>
     <div class="auth-title">Study Project</div>
-    <div class="auth-sub">Internal AI Research Platform</div>
-    <div class="auth-badge">Internal access only</div>
+    <div class="auth-sub">Internal AI Research &amp; Learning Platform</div>
+    <div class="auth-badge">🔒 Internal access only</div>
     <input type="password" class="auth-input" id="pass-input" placeholder="Access code" />
     <button class="auth-btn" onclick="checkAuth()">Enter</button>
     <div class="auth-err" id="auth-err"></div>
   </div>
 </div>
 
-<!-- MAIN APP -->
+<!-- APP -->
 <div id="app">
   <div class="topbar">
     <div class="topbar-logo">Pulse<span>Stock</span></div>
-    <div class="topbar-tag">Study Mode</div>
+    <div class="topbar-tag">Study · Internal</div>
     <div class="topbar-right">
       <div class="status-dot"></div>
       <div class="status-label" id="live-time"></div>
@@ -290,37 +265,34 @@
   </div>
 
   <div class="tabs">
-    <div class="tab active" onclick="setTab('a')">Portfolio A <span class="tab-badge" id="badge-a">—</span></div>
-    <div class="tab" onclick="setTab('b')">Portfolio B <span class="tab-badge" id="badge-b">—</span></div>
-    <div class="tab" onclick="setTab('compare')">Compare</div>
-    <div class="tab" onclick="setTab('critic')">Critic AI <span class="tab-badge" id="badge-critic">—</span></div>
+    <div class="tab active" data-tab="a">Portfolio A <span class="tab-badge" id="badge-a">—</span></div>
+    <div class="tab" data-tab="b">Portfolio B <span class="tab-badge" id="badge-b">—</span></div>
+    <div class="tab" data-tab="compare">Compare</div>
+    <div class="tab" data-tab="critic">Critic AI <span class="tab-badge" id="badge-critic">—</span></div>
+    <div class="tab" data-tab="learning">Learning Loop <span class="tab-badge" id="badge-rules">—</span></div>
   </div>
 
   <div class="content">
 
     <!-- PORTFOLIO A -->
     <div class="panel active" id="panel-a">
-      <div class="stats-row" id="stats-a">
+      <div class="stats-row">
         <div class="stat-card"><div class="stat-label">Total Picks</div><div class="stat-value blue" id="a-total">—</div></div>
         <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value" id="a-winrate">—</div></div>
         <div class="stat-card"><div class="stat-label">Avg Return</div><div class="stat-value" id="a-avgret">—</div></div>
-        <div class="stat-card"><div class="stat-label">Open Positions</div><div class="stat-value blue" id="a-open">—</div></div>
+        <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value blue" id="a-open">—</div></div>
       </div>
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Haiku Picks — Portfolio A (read-only)</div>
+          <div class="card-title">Portfolio A — Haiku Picks (read-only)</div>
+          <div style="font-size:11px;color:var(--muted)">Source: pulsestock-data</div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Ticker</th><th>Date</th><th>Action</th><th>Entry</th><th>Target</th><th>Stop</th><th>Status</th><th>Return</th>
-              </tr>
-            </thead>
-            <tbody id="table-a"></tbody>
-          </table>
+        <div id="loading-a" class="empty-state"><div class="empty-icon">⏳</div><div class="empty-title">Loading…</div></div>
+        <div class="table-wrap" id="table-a-wrap" style="display:none">
+          <table><thead><tr>
+            <th>Ticker</th><th>Date</th><th>Action</th><th>Entry</th><th>Target</th><th>Stop</th><th>Status</th><th>Return</th>
+          </tr></thead><tbody id="table-a"></tbody></table>
         </div>
-        <div id="loading-a" class="empty-state"><div class="empty-icon">⏳</div><div class="empty-title">Loading Portfolio A…</div></div>
       </div>
     </div>
 
@@ -330,22 +302,22 @@
         <div class="stat-card"><div class="stat-label">B Picks</div><div class="stat-value purple" id="b-total">—</div></div>
         <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value" id="b-winrate">—</div></div>
         <div class="stat-card"><div class="stat-label">Avg Return</div><div class="stat-value" id="b-avgret">—</div></div>
-        <div class="stat-card"><div class="stat-label">80%+ Conf</div><div class="stat-value purple" id="b-highconf">—</div></div>
+        <div class="stat-card"><div class="stat-label">≥80% Conf</div><div class="stat-value purple" id="b-highconf">—</div></div>
+        <div class="stat-card"><div class="stat-label">Declines</div><div class="stat-value amber" id="b-declines">—</div></div>
       </div>
-      <div class="card" style="margin-bottom:16px;">
+      <div class="card">
         <div class="card-header">
-          <div class="card-title">Generate Portfolio B Pick (Sonnet · 80% gate)</div>
+          <div class="card-title">Generate Pick — Sonnet · 80% Gate</div>
           <button class="gen-btn" id="gen-b-btn" onclick="generatePickB()">
-            <span class="spinner"></span>
-            ✦ Generate Pick
+            <span class="spinner"></span>✦ Generate Pick
           </button>
         </div>
-        <div style="font-size:12px;color:var(--muted);">
-          Sonnet 4.6 · Chain-of-thought · 80% confidence threshold · Key risk required
+        <div style="font-size:12px;color:var(--muted)">
+          Sonnet 4.6 · Chain-of-thought · Key risk field · Adversarial critic pre-screen · Strategy memory applied
         </div>
       </div>
       <div class="pick-grid" id="picks-b"></div>
-      <div id="empty-b" class="empty-state" style="display:none;">
+      <div id="empty-b" class="empty-state">
         <div class="empty-icon">🧪</div>
         <div class="empty-title">No Portfolio B picks yet</div>
         <div class="empty-desc">Generate your first Sonnet pick above</div>
@@ -354,72 +326,145 @@
 
     <!-- COMPARE -->
     <div class="panel" id="panel-compare">
-      <div id="divergences-wrap"></div>
+      <div id="divergences-wrap" style="margin-bottom:16px"></div>
       <div class="compare-grid">
         <div>
           <div class="compare-col-header">
             <div class="col-a-dot"></div>
-            <div>
-              <div class="col-label">Portfolio A — Haiku</div>
-              <div class="col-sublabel">Standard analysis · fast · broad coverage</div>
-            </div>
+            <div><div class="col-label">Portfolio A — Haiku</div><div class="col-sublabel">Standard · fast · broad coverage</div></div>
           </div>
           <div id="compare-a"></div>
         </div>
         <div>
           <div class="compare-col-header">
             <div class="col-b-dot"></div>
-            <div>
-              <div class="col-label">Portfolio B — Sonnet</div>
-              <div class="col-sublabel">Chain-of-thought · 80% confidence gate</div>
-            </div>
+            <div><div class="col-label">Portfolio B — Sonnet</div><div class="col-sublabel">Chain-of-thought · 80% confidence gate</div></div>
           </div>
           <div id="compare-b"></div>
         </div>
       </div>
     </div>
 
-    <!-- CRITIC AI -->
+    <!-- CRITIC -->
     <div class="panel" id="panel-critic">
-      <div class="card" style="margin-bottom:16px;">
+      <div class="card">
         <div class="card-header">
-          <div class="card-title">Mistake Clusters</div>
+          <div class="card-title">Level 2 — Mistake Clusters</div>
           <button class="gen-btn" id="cluster-btn" onclick="runClustering()">
-            <span class="spinner"></span>
-            ✦ Analyze Patterns
+            <span class="spinner"></span>✦ Find Patterns
           </button>
         </div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Requires 10+ closed trades to activate</div>
-        <div id="clusters-wrap"><div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">No clusters yet</div><div class="empty-desc">Run analysis after 10+ closed trades</div></div></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Unlocks at 10+ closed trades. Discovers: high-VIX breakouts, sector traps, timing failure modes, overconfidence patterns.</div>
+        <div id="clusters-wrap"><div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">No patterns found yet</div></div></div>
       </div>
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Trade Postmortems</div>
-          <button class="gen-btn" id="critic-btn" onclick="runCritic()">
-            <span class="spinner"></span>
-            ✦ Run Critic
-          </button>
+          <div class="card-title">Level 1 — Trade Postmortems</div>
+          <div style="display:flex;gap:8px">
+            <button class="action-btn" id="critic-btn" onclick="runCritic()">
+              <span class="spinner" style="width:12px;height:12px;border-width:2px;display:none"></span>✦ Run Critic
+            </button>
+          </div>
         </div>
-        <div id="critiques-wrap"></div>
+        <div id="critiques-wrap"><div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No postmortems yet</div><div class="empty-desc">Run Critic on closed trades</div></div></div>
       </div>
     </div>
 
+    <!-- LEARNING LOOP -->
+    <div class="panel" id="panel-learning">
+
+      <!-- Loop diagram -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">The Improvement Loop</div></div>
+        <div class="learning-loop-diagram">
+          <div class="loop-node"><div class="loop-node-icon">🎯</div><div class="loop-node-title">Prediction AI</div><div class="loop-node-desc">Portfolio B generates picks using Sonnet + strategy memory</div></div>
+          <div class="loop-node"><div class="loop-node-icon">📦</div><div class="loop-node-title">Outcome Database</div><div class="loop-node-desc">Every trade stored with full context: regime, VIX, sector, confidence</div></div>
+          <div class="loop-node"><div class="loop-node-icon">🔬</div><div class="loop-node-title">Postmortem AI</div><div class="loop-node-desc">Critic explains wins/losses across 9 dimensions</div></div>
+          <div class="loop-node"><div class="loop-node-icon">🧩</div><div class="loop-node-title">Mistake Clustering</div><div class="loop-node-desc">Finds recurring failure patterns (VIX, sector, timing, overconfidence)</div></div>
+          <div class="loop-node active-node"><div class="loop-node-icon">🧠</div><div class="loop-node-title">Strategy Memory</div><div class="loop-node-desc">Learned rules and factor weights injected into every new pick</div></div>
+          <div class="loop-node"><div class="loop-node-icon">📐</div><div class="loop-node-title">Calibration</div><div class="loop-node-desc">Tracks confidence vs actual win rate by bucket</div></div>
+        </div>
+      </div>
+
+      <!-- Regime detection -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Market Regime</div>
+          <button class="action-btn" id="regime-btn" onclick="detectRegime()">
+            <span class="spinner" style="width:12px;height:12px;border-width:2px;display:none"></span>Detect Current Regime
+          </button>
+        </div>
+        <div id="regime-display">
+          <div class="empty-state"><div class="empty-icon">🌡</div><div class="empty-title">Regime unknown</div><div class="empty-desc">Run detection to classify current market environment</div></div>
+        </div>
+      </div>
+
+      <!-- Strategy memory / learned rules -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Strategy Memory — Learned Rules</div>
+          <div style="display:flex;gap:8px">
+            <button class="action-btn" id="update-mem-btn" onclick="updateStrategyMemory()">
+              <span class="spinner" style="width:12px;height:12px;border-width:2px;display:none"></span>Update from Critiques
+            </button>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+          Rules discovered from mistake clustering. Injected into every Portfolio B pick prompt.
+        </div>
+        <div id="rules-wrap"><div class="empty-state"><div class="empty-icon">📖</div><div class="empty-title">No rules yet</div><div class="empty-desc">Runs automatically after mistake clustering</div></div></div>
+      </div>
+
+      <!-- Factor weights -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">Factor Weights (Level 5 — Feature Drift Detection)</div></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px">How much weight Sonnet gives each factor. Updates as performance evidence accumulates.</div>
+        <div id="factors-wrap"><div class="empty-state"><div class="empty-icon">⚖️</div><div class="empty-title">No factor data yet</div></div></div>
+      </div>
+
+      <!-- Calibration -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Confidence Calibration (Level 4)</div>
+          <button class="action-btn" onclick="runCalibration()">Recalibrate</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+          Compares declared confidence to actual win rate by bucket. Good calibration = 80% confidence → ~80% wins.
+        </div>
+        <div class="calibration-grid" id="cal-grid"><div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">📏</div><div class="empty-title">Need more closed trades</div></div></div>
+      </div>
+
+      <!-- Counterfactual -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Level 7 — Counterfactual Analysis</div>
+          <button class="action-btn" id="cf-btn" onclick="runCounterfactual()">
+            <span class="spinner" style="width:12px;height:12px;border-width:2px;display:none"></span>Run Analysis
+          </button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+          Asks: Was the stock selection wrong, or just the timing/exit? Separates bad picks from bad execution.
+        </div>
+        <div id="cf-wrap"><div class="empty-state"><div class="empty-icon">🔄</div><div class="empty-title">No counterfactuals yet</div></div></div>
+      </div>
+
+    </div><!-- /panel-learning -->
   </div><!-- /content -->
 </div><!-- /app -->
 
-<!-- Pick Detail Modal -->
+<!-- Pick detail modal -->
 <div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <span class="modal-close" onclick="closeModal()">✕</span>
     <div class="modal-ticker" id="m-ticker"></div>
-    <div id="m-date" style="font-size:12px;color:var(--muted);margin-bottom:4px;"></div>
-    <div id="m-badges" style="margin-bottom:12px;"></div>
+    <div id="m-date" style="font-size:12px;color:var(--muted);margin-bottom:8px;"></div>
+    <div id="m-badges" style="margin-bottom:16px;display:flex;gap:6px;flex-wrap:wrap;"></div>
     <div class="modal-section">
-      <div class="modal-section-title">Chain-of-Thought Reasoning</div>
-      <div class="modal-body" id="m-cot"></div>
+      <div class="modal-section-title">Chain-of-Thought</div>
+      <div class="modal-cot" id="m-cot"></div>
     </div>
     <div class="modal-section">
-      <div class="modal-section-title">Final Reasoning</div>
+      <div class="modal-section-title">Final Thesis</div>
       <div class="modal-body" id="m-reasoning"></div>
     </div>
     <div class="modal-section">
@@ -433,10 +478,18 @@
     </div>
     <div class="modal-section">
       <div class="modal-section-title">Confidence</div>
-      <div class="conf-bar">
-        <div class="conf-track" style="height:8px;border-radius:4px;"><div class="conf-fill" id="m-conf-fill" style="height:100%;border-radius:4px;"></div></div>
+      <div class="conf-bar" style="margin-top:4px">
+        <div class="conf-track" style="height:8px;border-radius:4px"><div class="conf-fill" id="m-conf-fill" style="height:100%;border-radius:4px"></div></div>
         <div class="conf-val" id="m-conf-val"></div>
       </div>
+    </div>
+    <div class="modal-section" id="m-regime-wrap" style="display:none">
+      <div class="modal-section-title">Market Regime at Pick Time</div>
+      <div class="modal-body" id="m-regime"></div>
+    </div>
+    <div class="modal-section" id="m-adversarial-wrap" style="display:none">
+      <div class="modal-section-title">Adversarial Critic Response</div>
+      <div class="modal-body" id="m-adversarial" style="color:var(--danger)"></div>
     </div>
   </div>
 </div>
@@ -444,17 +497,16 @@
 <div id="toast"></div>
 
 <script>
-/* ─── CONSTANTS ───────────────────────────────────── */
-const GH_TOKEN = '__GH_TOKEN__';
-const ANT_KEY  = '__ANT_KEY__';
-const DATA_REPO   = 'mscharbo-commits/pulsestock-data';
-const STUDY_REPO  = 'mscharbo-commits/pulsestock-study-data';
+/* ── CONSTANTS ─────────────────────────────────── */
+const GH_TOKEN  = '__GH_TOKEN__';
+const ANT_KEY   = '__ANT_KEY__';
+const DATA_REPO  = 'mscharbo-commits/pulsestock-data';
+const STUDY_REPO = 'mscharbo-commits/pulsestock-study-data';
 const ACCESS_CODE = 'pulsestock2026';
 
-/* ─── AUTH ────────────────────────────────────────── */
+/* ── AUTH ──────────────────────────────────────── */
 function checkAuth() {
-  const val = document.getElementById('pass-input').value.trim();
-  if (val === ACCESS_CODE) {
+  if (document.getElementById('pass-input').value.trim() === ACCESS_CODE) {
     document.getElementById('auth-gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     initApp();
@@ -465,51 +517,45 @@ function checkAuth() {
 }
 document.getElementById('pass-input').addEventListener('keydown', e => { if(e.key==='Enter') checkAuth(); });
 
-/* ─── TABS ────────────────────────────────────────── */
-function setTab(t) {
-  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-  document.getElementById('panel-'+t).classList.add('active');
-  if (t === 'compare') renderCompare();
-}
-
-/* ─── GITHUB HELPERS ──────────────────────────────── */
-async function ghGet(repo, path) {
-  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
-    headers: { Authorization: `token ${GH_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
+/* ── TABS ──────────────────────────────────────── */
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById('panel-'+this.dataset.tab).classList.add('active');
+    if (this.dataset.tab === 'compare') renderCompare();
+    if (this.dataset.tab === 'learning') renderLearning();
   });
-  if (!r.ok) return null;
-  const d = await r.json();
-  return JSON.parse(atob(d.content.replace(/\n/g,'')));
-}
+});
 
+/* ── GITHUB ────────────────────────────────────── */
 async function ghGetRaw(repo, path) {
-  const r = await fetch(`https://raw.githubusercontent.com/${repo}/main/${path}`);
+  const r = await fetch(`https://raw.githubusercontent.com/${repo}/main/${path}?t=${Date.now()}`);
+  if (!r.ok) return null;
+  return r.json().catch(() => null);
+}
+async function ghGetMeta(repo, path) {
+  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    headers: { Authorization: `token ${GH_TOKEN}` }
+  });
   if (!r.ok) return null;
   return r.json();
 }
-
-async function ghPut(repo, path, data, sha) {
+async function ghPut(repo, path, data) {
+  const meta = await ghGetMeta(repo, path);
+  const sha = meta?.sha;
   const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-  // Get sha if not provided
-  if (!sha) {
-    const meta = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
-      headers: { Authorization: `token ${GH_TOKEN}` }
-    });
-    if (meta.ok) { const m = await meta.json(); sha = m.sha; }
-  }
-  const body = { message: `update ${path}`, content, ...(sha ? {sha} : {}) };
   const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
     method: 'PUT',
     headers: { Authorization: `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ message: `update ${path}`, content, ...(sha ? {sha} : {}) })
   });
   return r.ok;
 }
 
-/* ─── ANTHROPIC HELPER ────────────────────────────── */
-async function callClaude(system, user, maxTokens=2000) {
+/* ── CLAUDE ────────────────────────────────────── */
+async function callClaude(system, user, maxTokens = 2000) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -526,83 +572,91 @@ async function callClaude(system, user, maxTokens=2000) {
     })
   });
   const d = await r.json();
+  if (d.error) throw new Error(d.error.message);
   return d.content?.[0]?.text || '';
 }
 
-/* ─── PORTFOLIO A DATA ────────────────────────────── */
-let portfolioA = [];
+function parseJSON(raw) {
+  return JSON.parse(raw.replace(/```json\s*|```\s*/g, '').trim());
+}
 
+/* ── APP STATE ─────────────────────────────────── */
+let portfolioA = [];
+let portfolioB = [];
+let critiques = [];
+let clusters = [];
+let strategyMemory = { rules: [], factor_weights: {}, updated_at: null };
+let calibrationLog = [];
+let regimeLog = { current_regime: null, history: [] };
+let tradeJournal = [];
+
+/* ══════════════════════════════════════════════════
+   PORTFOLIO A
+══════════════════════════════════════════════════ */
 async function loadPortfolioA() {
   try {
-    // Load from multiple batch files and portfolios
     let picks = [];
-    // Core portfolio
-    const core = await ghGetRaw(DATA_REPO, 'core_portfolio.json');
-    if (core) picks.push(...(Array.isArray(core) ? core : [core]));
-    // Swing portfolio
+    const core  = await ghGetRaw(DATA_REPO, 'core_portfolio.json');
     const swing = await ghGetRaw(DATA_REPO, 'swing_portfolio.json');
+    if (core)  picks.push(...(Array.isArray(core)  ? core  : [core]));
     if (swing) picks.push(...(Array.isArray(swing) ? swing : [swing]));
-    // Sample batches (0-4 to avoid too many requests)
     for (let i = 0; i <= 4; i++) {
       const batch = await ghGetRaw(DATA_REPO, `batch_${i}.json`);
       if (batch && Array.isArray(batch)) picks.push(...batch);
     }
-    portfolioA = picks.slice(0, 200); // cap
+    portfolioA = picks.slice(0, 300);
     renderPortfolioA();
   } catch(e) {
-    console.error('Portfolio A load error:', e);
-    document.getElementById('loading-a').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load Portfolio A data</div></div>';
+    document.getElementById('loading-a').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load Portfolio A</div></div>';
   }
 }
 
 function renderPortfolioA() {
-  const tbody = document.getElementById('table-a');
   document.getElementById('loading-a').style.display = 'none';
-  
+  document.getElementById('table-a-wrap').style.display = 'block';
+  const tbody = document.getElementById('table-a');
   if (!portfolioA.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px;">No picks found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px">No picks found in pulsestock-data</td></tr>';
     return;
   }
-
   let wins=0, totalRet=0, closed=0, open=0;
   tbody.innerHTML = portfolioA.map(p => {
-    const ret = p.return_pct || p.returnPct || p.pnl_pct || null;
-    const status = p.status || (ret !== null ? 'closed' : 'open');
-    if (status === 'open') open++; else closed++;
-    if (ret !== null) { totalRet += parseFloat(ret); if (parseFloat(ret) > 0) wins++; }
-    const retStr = ret !== null ? `<span class="${parseFloat(ret)>=0?'green':'red'}">${parseFloat(ret)>=0?'+':''}${parseFloat(ret).toFixed(1)}%</span>` : '—';
-    const action = p.action || p.signal || p.recommendation || 'BUY';
-    const ticker = p.ticker || p.symbol || p.stock || '?';
-    const date = p.date || p.created_at || p.timestamp || '';
-    const entry = p.entry_price || p.entryPrice || p.price || '—';
-    const target = p.target_price || p.targetPrice || p.target || '—';
-    const stop = p.stop_loss || p.stopLoss || p.stop || '—';
+    const ret = parseFloat(p.return_pct ?? p.returnPct ?? p.pnl_pct ?? NaN);
+    const hasRet = !isNaN(ret);
+    const status = p.status || (hasRet ? 'closed' : 'open');
+    if (status === 'open') open++; else { closed++; if (hasRet) { totalRet += ret; if (ret > 0) wins++; } }
+    const action = (p.action || p.signal || p.recommendation || 'BUY').toUpperCase();
+    const ticker = p.ticker || p.symbol || '?';
+    const date   = p.date || p.created_at || p.timestamp || '';
+    const entry  = p.entry_price ?? p.entryPrice ?? p.price ?? '—';
+    const target = p.target_price ?? p.targetPrice ?? p.target ?? '—';
+    const stop   = p.stop_loss ?? p.stopLoss ?? p.stop ?? '—';
+    const fmt = v => typeof v === 'number' ? '$'+v.toFixed(2) : v;
+    const retStr = hasRet ? `<span class="${ret>=0?'green':'red'}">${ret>=0?'+':''}${ret.toFixed(1)}%</span>` : '—';
     return `<tr>
       <td class="mono" style="font-weight:700">${ticker}</td>
       <td style="color:var(--muted)">${date ? new Date(date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'}</td>
       <td><span class="badge badge-${action.toLowerCase()}">${action}</span></td>
-      <td class="mono">$${typeof entry==='number'?entry.toFixed(2):entry}</td>
-      <td class="mono">$${typeof target==='number'?target.toFixed(2):target}</td>
-      <td class="mono">$${typeof stop==='number'?stop.toFixed(2):stop}</td>
+      <td class="mono">${fmt(entry)}</td>
+      <td class="mono">${fmt(target)}</td>
+      <td class="mono">${fmt(stop)}</td>
       <td><span class="badge badge-${status}">${status}</span></td>
       <td>${retStr}</td>
     </tr>`;
   }).join('');
 
-  const winRate = closed > 0 ? ((wins/closed)*100).toFixed(0) : '—';
-  const avgRet = closed > 0 ? (totalRet/closed).toFixed(1) : '—';
+  const wr = closed > 0 ? ((wins/closed)*100).toFixed(0) : null;
+  const ar = closed > 0 ? (totalRet/closed).toFixed(1) : null;
   document.getElementById('a-total').textContent = portfolioA.length;
-  document.getElementById('a-winrate').textContent = winRate !== '—' ? winRate+'%' : '—';
-  document.getElementById('a-winrate').className = 'stat-value ' + (parseFloat(winRate)>=50?'green':'red');
-  document.getElementById('a-avgret').textContent = avgRet !== '—' ? avgRet+'%' : '—';
-  document.getElementById('a-avgret').className = 'stat-value ' + (parseFloat(avgRet)>=0?'green':'red');
-  document.getElementById('a-open').textContent = open;
   document.getElementById('badge-a').textContent = portfolioA.length;
+  if (wr) { document.getElementById('a-winrate').textContent = wr+'%'; document.getElementById('a-winrate').className = 'stat-value '+(parseInt(wr)>=50?'green':'red'); }
+  if (ar) { document.getElementById('a-avgret').textContent = ar+'%'; document.getElementById('a-avgret').className = 'stat-value '+(parseFloat(ar)>=0?'green':'red'); }
+  document.getElementById('a-open').textContent = open;
 }
 
-/* ─── PORTFOLIO B ─────────────────────────────────── */
-let portfolioB = [];
-
+/* ══════════════════════════════════════════════════
+   PORTFOLIO B
+══════════════════════════════════════════════════ */
 async function loadPortfolioB() {
   portfolioB = await ghGetRaw(STUDY_REPO, 'portfolio_b.json') || [];
   renderPortfolioB();
@@ -611,129 +665,144 @@ async function loadPortfolioB() {
 function renderPortfolioB() {
   const grid = document.getElementById('picks-b');
   const empty = document.getElementById('empty-b');
-  document.getElementById('b-total').textContent = portfolioB.length;
-  document.getElementById('badge-b').textContent = portfolioB.length;
+  const total = portfolioB.filter(p => !p.declined).length;
+  const declines = portfolioB.filter(p => p.declined).length;
+  document.getElementById('b-total').textContent = total;
+  document.getElementById('badge-b').textContent = total;
+  document.getElementById('b-declines').textContent = declines;
 
-  if (!portfolioB.length) { grid.innerHTML=''; empty.style.display='block'; return; }
-  empty.style.display='none';
-
+  const real = portfolioB.filter(p => !p.declined);
   let wins=0, totalRet=0, closed=0, highConf=0;
-  portfolioB.forEach(p => {
+  real.forEach(p => {
     if ((p.confidence||0) >= 80) highConf++;
-    const ret = p.return_pct;
-    if (ret !== undefined) { closed++; totalRet+=ret; if(ret>0) wins++; }
+    if (p.return_pct !== undefined) { closed++; totalRet += p.return_pct; if(p.return_pct>0) wins++; }
   });
-
   document.getElementById('b-winrate').textContent = closed>0 ? ((wins/closed)*100).toFixed(0)+'%' : '—';
-  document.getElementById('b-winrate').className = 'stat-value ' + (closed>0&&wins/closed>=0.5?'green':'red');
+  document.getElementById('b-winrate').className = 'stat-value '+(closed>0&&wins/closed>=0.5?'green':'red');
   document.getElementById('b-avgret').textContent = closed>0 ? (totalRet/closed).toFixed(1)+'%' : '—';
   document.getElementById('b-highconf').textContent = highConf;
 
-  grid.innerHTML = portfolioB.slice().reverse().map((p,i) => {
-    const idx = portfolioB.length - 1 - i;
+  if (!real.length) { grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+  grid.innerHTML = real.slice().reverse().map((p,i) => {
+    const idx = real.length - 1 - i;
     const conf = p.confidence || 0;
     const ret = p.return_pct;
     const retStr = ret !== undefined ? `<span class="${ret>=0?'green':'red'}">${ret>=0?'+':''}${ret.toFixed(1)}%</span>` : '';
     return `<div class="pick-card" onclick="openPickModal(${idx})">
       <div class="pick-card-top">
-        <div>
-          <div class="pick-ticker">${p.ticker}</div>
-          <div class="pick-date">${new Date(p.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
-        </div>
-        <div style="text-align:right">
-          <span class="badge badge-${(p.action||'BUY').toLowerCase()}">${p.action||'BUY'}</span>
-          <div style="margin-top:6px">${retStr}</div>
-        </div>
+        <div><div class="pick-ticker">${p.ticker}</div><div class="pick-date">${new Date(p.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></div>
+        <div style="text-align:right"><span class="badge badge-${(p.action||'buy').toLowerCase()}">${p.action||'BUY'}</span><div style="margin-top:6px">${retStr}</div></div>
       </div>
       <div class="pick-reasoning">${(p.reasoning||'').substring(0,160)}${(p.reasoning||'').length>160?'…':''}</div>
       <div class="pick-risk">${(p.key_risk||'').substring(0,120)}</div>
-      <div class="conf-bar">
-        <div class="conf-track"><div class="conf-fill" style="width:${conf}%"></div></div>
-        <div class="conf-val">${conf}%</div>
-      </div>
+      <div class="conf-bar"><div class="conf-track"><div class="conf-fill" style="width:${conf}%"></div></div><div class="conf-val">${conf}%</div></div>
     </div>`;
   }).join('');
 }
 
 async function generatePickB() {
   const btn = document.getElementById('gen-b-btn');
-  btn.disabled = true; btn.classList.add('loading');
-  btn.querySelector('.spinner').style.display = 'block';
-
+  btn.disabled=true; btn.classList.add('loading');
   try {
-    // Get latest batch data for context
-    const batch = await ghGetRaw(DATA_REPO, 'batch_0.json');
-    const intraday = await ghGetRaw(DATA_REPO, 'intraday.json');
+    // Get context
+    const batch0 = await ghGetRaw(DATA_REPO, 'batch_0.json');
+    const recentA = portfolioA.slice(-10);
+    const recentB = portfolioB.filter(p=>!p.declined).slice(-5);
+    const contextStocks = batch0 ? (Array.isArray(batch0) ? batch0.slice(0,15) : []) : [];
+
+    // Build strategy memory injection
+    const rules = strategyMemory.rules || [];
+    const regime = regimeLog.current_regime;
+    const rulesStr = rules.length
+      ? 'LEARNED RULES FROM MISTAKE HISTORY:\n' + rules.map(r=>`- ${r}`).join('\n')
+      : 'No learned rules yet.';
+    const regimeStr = regime
+      ? `CURRENT MARKET REGIME: ${regime.label} — ${regime.description}. Strategy guidance: ${regime.guidance}`
+      : 'Market regime: undetected.';
+
+    const sys = `You are Portfolio B — a rigorous, high-conviction stock pick AI.
+You reason step-by-step before committing. Your confidence threshold is 80%.
+You have an adversarial critic built in: after forming a thesis, you must attempt to destroy it before finalizing.
+Apply all learned rules and regime context provided. Respond ONLY in valid JSON.`;
+
+    const usr = `Today: ${new Date().toDateString()}
     
-    const contextStocks = batch ? (Array.isArray(batch) ? batch.slice(0,20) : [batch]) : [];
-    const contextStr = contextStocks.map(s => 
-      `${s.ticker||s.symbol}: score=${s.score||s.ai_score||'?'}, price=$${s.price||s.current_price||'?'}`
-    ).join('\n');
+${regimeStr}
 
-    const systemPrompt = `You are Portfolio B — a rigorous stock pick AI for the PulseStock Study project.
-You use chain-of-thought reasoning before committing to a final recommendation.
-Your threshold is 80% confidence. If you cannot reach 80%, you must decline to pick.
-You always identify the single most important risk to the trade thesis.
-Always respond in valid JSON only, no markdown.`;
+${rulesStr}
 
-    const userPrompt = `Today is ${new Date().toDateString()}.
-Recent stock analysis context from Portfolio A (Haiku):
-${contextStr || 'No context available'}
+Recent A picks for divergence awareness: ${recentA.map(p=>`${p.ticker||p.symbol}:${p.action||p.signal||'?'}`).join(', ')||'none'}
+Recent B picks: ${recentB.map(p=>`${p.ticker}:${p.action}@$${p.entry_price}`).join(', ')||'none'}
+Stock scan data: ${contextStocks.map(s=>`${s.ticker||s.symbol}:score=${s.score||s.ai_score||'?'}`).join(', ')||'none'}
 
-Existing Portfolio B picks (for divergence awareness):
-${portfolioB.slice(-5).map(p=>`${p.ticker}: ${p.action} @ $${p.entry_price}`).join('\n') || 'None yet'}
-
-Using chain-of-thought reasoning, select ONE high-conviction stock pick.
-
-Respond ONLY with this JSON structure:
+Respond with EXACTLY this JSON:
 {
   "ticker": "SYMBOL",
-  "action": "BUY" or "SELL" or "HOLD",
+  "action": "BUY|SELL|HOLD",
   "entry_price": number,
   "target_price": number,
   "stop_loss": number,
-  "confidence": number (0-100, must be ≥80 or decline),
+  "timeframe": "short-term|medium-term|long-term",
+  "confidence": number,
   "declined": false,
   "decline_reason": null,
-  "chain_of_thought": "Full step-by-step reasoning process (300-500 words): consider macro environment, sector rotation, technical setup, fundamental catalyst, risk/reward ratio, then arrive at conviction level",
-  "reasoning": "Final concise thesis (100-150 words)",
-  "key_risk": "Single most important risk that could invalidate this trade (1-2 sentences)",
-  "timeframe": "short-term / medium-term / long-term",
+  "chain_of_thought": "Full reasoning: macro environment → sector rotation → technical setup → fundamental catalyst → risk/reward ratio → conviction level. 400-600 words.",
+  "adversarial_response": "Adversarial critic: 3-4 strongest objections to this trade thesis. If objections cut confidence below 80, declined must be true.",
+  "reasoning": "Final concise thesis after surviving adversarial critique. 100-150 words.",
+  "key_risk": "Single most important risk that could invalidate this trade. 1-2 sentences.",
+  "regime_context": "${regime ? regime.label : 'unknown'}",
+  "rules_applied": ["list of learned rules considered"],
   "date": "${new Date().toISOString()}"
 }
+If confidence < 80 after adversarial critique, set declined=true, decline_reason="explanation", zero out price fields.`;
 
-If confidence < 80, set declined=true, decline_reason="explanation", and null all other fields except date.`;
-
-    const raw = await callClaude(systemPrompt, userPrompt, 1500);
-    let pick;
-    try { pick = JSON.parse(raw.replace(/```json?|```/g,'')); }
-    catch(e) { throw new Error('Invalid JSON from AI'); }
+    const raw = await callClaude(sys, usr, 1800);
+    const pick = parseJSON(raw);
+    pick.id = Date.now().toString();
 
     if (pick.declined) {
-      showToast(`⚠ Sonnet declined to pick: ${pick.decline_reason}`);
-    } else {
-      pick.id = Date.now().toString();
+      showToast(`⚠ Sonnet declined: ${(pick.decline_reason||'').substring(0,80)}`);
+      pick.ticker = pick.ticker || 'DECLINED';
       portfolioB.push(pick);
-      await ghPut(STUDY_REPO, 'portfolio_b.json', portfolioB);
-      renderPortfolioB();
-      showToast(`✦ New pick: ${pick.ticker} — ${pick.confidence}% confidence`);
+    } else {
+      portfolioB.push(pick);
+      showToast(`✦ New pick: ${pick.ticker} — ${pick.confidence}% conf`);
     }
+
+    // Write to journal
+    tradeJournal.push({
+      id: pick.id, ticker: pick.ticker, portfolio: 'B', action: pick.action,
+      entry_price: pick.entry_price, confidence: pick.confidence,
+      regime: regime?.label || 'unknown', date: pick.date,
+      vix_regime: regime?.vix || null, rules_applied: pick.rules_applied || []
+    });
+
+    await Promise.all([
+      ghPut(STUDY_REPO, 'portfolio_b.json', portfolioB),
+      ghPut(STUDY_REPO, 'trade_journal.json', tradeJournal)
+    ]);
+    renderPortfolioB();
   } catch(e) {
-    showToast('Error generating pick: ' + e.message);
+    showToast('Error: '+e.message);
     console.error(e);
   } finally {
-    btn.disabled = false; btn.classList.remove('loading');
-    btn.querySelector('.spinner').style.display = 'none';
+    btn.disabled=false; btn.classList.remove('loading');
   }
 }
 
-/* ─── PICK MODAL ──────────────────────────────────── */
+/* ── PICK MODAL ─────────────────────────────────── */
 function openPickModal(idx) {
-  const p = portfolioB[idx];
+  const real = portfolioB.filter(p=>!p.declined);
+  const p = real[idx];
   if (!p) return;
   document.getElementById('m-ticker').textContent = p.ticker;
   document.getElementById('m-date').textContent = new Date(p.date).toLocaleString();
-  document.getElementById('m-badges').innerHTML = `<span class="badge badge-${(p.action||'').toLowerCase()}">${p.action||''}</span> <span class="badge badge-${p.status||'open'}">${p.status||'open'}</span> ${p.timeframe?`<span class="badge" style="background:var(--surface2)">${p.timeframe}</span>`:''}`;
+  document.getElementById('m-badges').innerHTML =
+    `<span class="badge badge-${(p.action||'').toLowerCase()}">${p.action||''}</span>` +
+    `<span class="badge badge-${p.status||'open'}">${p.status||'open'}</span>` +
+    (p.timeframe ? `<span class="badge" style="background:var(--surface2)">${p.timeframe}</span>` : '') +
+    (p.regime_context ? `<span class="badge" style="background:var(--surface2)">📍 ${p.regime_context}</span>` : '');
   document.getElementById('m-cot').textContent = p.chain_of_thought || '—';
   document.getElementById('m-reasoning').textContent = p.reasoning || '—';
   document.getElementById('m-risk').textContent = p.key_risk || '—';
@@ -742,228 +811,432 @@ function openPickModal(idx) {
   document.getElementById('m-stop').textContent = p.stop_loss ? '$'+p.stop_loss.toFixed(2) : '—';
   document.getElementById('m-conf-fill').style.width = (p.confidence||0)+'%';
   document.getElementById('m-conf-val').textContent = (p.confidence||0)+'%';
+  if (p.adversarial_response) {
+    document.getElementById('m-adversarial-wrap').style.display = 'block';
+    document.getElementById('m-adversarial').textContent = p.adversarial_response;
+  } else { document.getElementById('m-adversarial-wrap').style.display = 'none'; }
   document.getElementById('modal').classList.add('open');
 }
 function closeModal() { document.getElementById('modal').classList.remove('open'); }
 
-/* ─── COMPARE VIEW ────────────────────────────────── */
+/* ══════════════════════════════════════════════════
+   COMPARE
+══════════════════════════════════════════════════ */
 function renderCompare() {
-  const wrapA = document.getElementById('compare-a');
-  const wrapB = document.getElementById('compare-b');
-  const divWrap = document.getElementById('divergences-wrap');
-
-  // Find divergences: stocks in both portfolios with different signals
   const aMap = {};
-  portfolioA.forEach(p => { 
-    const t = p.ticker||p.symbol; 
-    if(t) aMap[t] = p; 
-  });
-  
-  const divergences = portfolioB.filter(p => {
+  portfolioA.forEach(p => { const t = p.ticker||p.symbol; if(t) aMap[t] = p; });
+  const realB = portfolioB.filter(p=>!p.declined);
+
+  const divergences = realB.filter(p => {
     const a = aMap[p.ticker];
     if (!a) return false;
-    const aAction = (a.action||a.signal||'').toUpperCase();
-    const bAction = (p.action||'').toUpperCase();
-    return aAction && bAction && aAction !== bAction;
+    const aA = (a.action||a.signal||'').toUpperCase();
+    const bA = (p.action||'').toUpperCase();
+    return aA && bA && aA !== bA;
   });
 
-  divWrap.innerHTML = divergences.length ? divergences.map(p => {
-    const a = aMap[p.ticker];
-    const aAction = a.action||a.signal||'?';
-    const bAction = p.action||'?';
-    return `<div class="divergence-banner">
-      <div class="icon">⚡</div>
-      <div><strong>${p.ticker}</strong> — Divergence: Portfolio A says <span class="badge badge-${aAction.toLowerCase()}">${aAction}</span> · Portfolio B says <span class="badge badge-${bAction.toLowerCase()}">${bAction}</span> (${p.confidence}% conf)</div>
-    </div>`;
-  }).join('') : '';
+  document.getElementById('divergences-wrap').innerHTML = divergences.length
+    ? divergences.map(p => {
+        const a = aMap[p.ticker];
+        const aAct = a.action||a.signal||'?';
+        const bAct = p.action||'?';
+        return `<div class="divergence-banner">
+          <span>⚡</span>
+          <div><strong>${p.ticker}</strong> divergence — A: <span class="badge badge-${aAct.toLowerCase()}">${aAct}</span> · B: <span class="badge badge-${bAct.toLowerCase()}">${bAct}</span> (${p.confidence}% conf, ${p.timeframe||'?'})</div>
+        </div>`;
+      }).join('')
+    : '';
 
-  // Portfolio A table (recent 20)
-  const aRecent = portfolioA.slice(-20).reverse();
-  wrapA.innerHTML = aRecent.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Ticker</th><th>Action</th><th>Return</th></tr></thead><tbody>${
-    aRecent.map(p => {
-      const ret = p.return_pct || p.returnPct;
-      const action = p.action||p.signal||'?';
-      return `<tr><td class="mono" style="font-weight:700">${p.ticker||p.symbol||'?'}</td><td><span class="badge badge-${(action).toLowerCase()}">${action}</span></td><td>${ret!==undefined?`<span class="${ret>=0?'green':'red'}">${ret>=0?'+':''}${parseFloat(ret).toFixed(1)}%</span>`:'—'}</td></tr>`;
-    }).join('')
-  }</tbody></table></div>` : '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No A picks loaded</div></div>';
+  const tableFor = (picks, cols) => picks.length
+    ? `<div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${picks}</tbody></table></div>`
+    : `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No picks</div></div>`;
 
-  // Portfolio B table
-  const bRecent = portfolioB.slice().reverse();
-  wrapB.innerHTML = bRecent.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Ticker</th><th>Action</th><th>Conf</th><th>Return</th></tr></thead><tbody>${
-    bRecent.map(p => {
+  document.getElementById('compare-a').innerHTML = tableFor(
+    portfolioA.slice(-25).reverse().map(p => {
+      const act = p.action||p.signal||'?';
+      const ret = parseFloat(p.return_pct??p.returnPct??NaN);
+      return `<tr><td class="mono" style="font-weight:700">${p.ticker||p.symbol||'?'}</td><td><span class="badge badge-${act.toLowerCase()}">${act}</span></td><td>${!isNaN(ret)?`<span class="${ret>=0?'green':'red'}">${ret>=0?'+':''}${ret.toFixed(1)}%</span>`:'—'}</td></tr>`;
+    }).join(''),
+    ['Ticker','Action','Return']
+  );
+
+  document.getElementById('compare-b').innerHTML = tableFor(
+    realB.slice().reverse().map(p => {
       const ret = p.return_pct;
       return `<tr><td class="mono" style="font-weight:700">${p.ticker}</td><td><span class="badge badge-${(p.action||'').toLowerCase()}">${p.action||'?'}</span></td><td style="color:var(--accent-b)">${p.confidence||0}%</td><td>${ret!==undefined?`<span class="${ret>=0?'green':'red'}">${ret>=0?'+':''}${ret.toFixed(1)}%</span>`:'—'}</td></tr>`;
-    }).join('')
-  }</tbody></table></div>` : '<div class="empty-state"><div class="empty-icon">🧪</div><div class="empty-title">No B picks yet</div></div>';
+    }).join(''),
+    ['Ticker','Action','Conf','Return']
+  );
 }
 
-/* ─── CRITIC AI ───────────────────────────────────── */
-let critiques = [];
-let clusters = [];
-
+/* ══════════════════════════════════════════════════
+   CRITIC AI
+══════════════════════════════════════════════════ */
 async function loadCritic() {
-  critiques = await ghGetRaw(STUDY_REPO, 'critiques.json') || [];
-  clusters = await ghGetRaw(STUDY_REPO, 'mistake_clusters.json') || [];
-  renderCritiques();
-  renderClusters();
+  [critiques, clusters] = await Promise.all([
+    ghGetRaw(STUDY_REPO, 'critiques.json').then(d => d||[]),
+    ghGetRaw(STUDY_REPO, 'mistake_clusters.json').then(d => d||[])
+  ]);
+  renderCritiques(); renderClusters();
 }
 
 function renderCritiques() {
-  const wrap = document.getElementById('critiques-wrap');
   document.getElementById('badge-critic').textContent = critiques.length;
-  if (!critiques.length) {
-    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No postmortems yet</div><div class="empty-desc">Run Critic to analyze closed trades</div></div>`;
-    return;
-  }
-  wrap.innerHTML = critiques.slice().reverse().map(c => `
-    <div class="critique-card">
-      <div class="critique-header">
-        <div>
-          <div class="critique-ticker">${c.ticker}</div>
-          <div style="font-size:11px;color:var(--muted)">${new Date(c.date).toLocaleDateString()}</div>
-        </div>
-        <div class="critique-verdict">
+  document.getElementById('critiques-wrap').innerHTML = !critiques.length
+    ? `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No postmortems yet</div></div>`
+    : critiques.slice().reverse().map(c => `
+      <div class="critique-card">
+        <div class="critique-header">
+          <div><div class="critique-ticker">${c.ticker}</div><div style="font-size:11px;color:var(--muted)">${c.portfolio||''} · ${new Date(c.date||Date.now()).toLocaleDateString()}</div></div>
           <span class="badge ${c.outcome==='win'?'badge-win':'badge-loss'}">${c.outcome||'?'}</span>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">${c.portfolio||''}</div>
         </div>
-      </div>
-      <div style="font-size:12px;color:var(--label);line-height:1.7;margin-bottom:10px">${c.postmortem||''}</div>
-      <div style="font-size:11px;color:var(--muted)"><strong style="color:var(--warn)">Lesson:</strong> ${c.lesson||''}</div>
-    </div>
-  `).join('');
+        <div style="font-size:12px;color:var(--label);line-height:1.7;margin-bottom:10px">${c.postmortem||''}</div>
+        ${c.attribution ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px"><strong style="color:var(--accent-a)">Attribution:</strong> ${c.attribution}</div>` : ''}
+        <div style="font-size:11px;color:var(--muted)"><strong style="color:var(--warn)">Lesson:</strong> ${c.lesson||''}</div>
+        ${c.counterfactual ? `<div style="font-size:11px;color:var(--accent-c);margin-top:6px">↩ Counterfactual: ${c.counterfactual}</div>` : ''}
+      </div>`).join('');
 }
 
 function renderClusters() {
-  const wrap = document.getElementById('clusters-wrap');
-  if (!clusters.length) {
-    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">No clusters yet</div><div class="empty-desc">Run analysis after 10+ closed trades</div></div>`;
-    return;
-  }
-  wrap.innerHTML = clusters.map(c => `
-    <div class="mistake-cluster">
-      <div class="cluster-label">${c.pattern||'Pattern'} <span style="font-weight:400;color:var(--muted)">(${c.frequency||0}x)</span></div>
-      <div class="cluster-desc">${c.description||''}</div>
-      ${c.recommendation ? `<div style="font-size:11px;color:var(--accent-c);margin-top:8px">→ ${c.recommendation}</div>` : ''}
-    </div>
-  `).join('');
+  document.getElementById('clusters-wrap').innerHTML = !clusters.length
+    ? `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">No patterns yet</div></div>`
+    : clusters.map(c => `
+      <div class="mistake-cluster">
+        <div class="cluster-label">${c.pattern||'Pattern'} <span style="font-weight:400;color:var(--muted)">(${c.frequency||0}x observed)</span></div>
+        <div class="cluster-desc">${c.description||''}</div>
+        ${c.recommendation ? `<div style="font-size:11px;color:var(--accent-c);margin-top:8px">→ Rule: ${c.recommendation}</div>` : ''}
+      </div>`).join('');
 }
 
 async function runCritic() {
   const btn = document.getElementById('critic-btn');
-  btn.disabled=true; btn.classList.add('loading');
-
+  btn.disabled=true;
+  const sp = btn.querySelector('.spinner');
+  if(sp) sp.style.display='block';
   try {
-    // Get closed trades from both portfolios
-    const closedA = portfolioA.filter(p => p.status==='closed' || p.return_pct!==undefined).slice(-10);
-    const closedB = portfolioB.filter(p => p.return_pct!==undefined || p.status==='closed');
+    const closedA = portfolioA.filter(p => p.return_pct!==undefined || p.returnPct!==undefined).slice(-10).map(p=>({...p,portfolio:'A (Haiku)'}));
+    const closedB = portfolioB.filter(p => !p.declined && p.return_pct!==undefined).map(p=>({...p,portfolio:'B (Sonnet)'}));
+    const allClosed = [...closedA, ...closedB];
 
-    if (!closedA.length && !closedB.length) {
-      showToast('No closed trades to critique yet'); return;
-    }
+    if (!allClosed.length) { showToast('No closed trades found yet'); return; }
 
-    const systemPrompt = `You are the Critic AI for PulseStock Study. Your job is to write honest, detailed postmortems on closed trades and identify what the AI did right or wrong. Be direct and specific. Always respond in valid JSON only.`;
+    const sys = `You are Critic AI — a rigorous trade postmortem analyst combining hedge fund risk committee, trading journal, forensic analyst, and ML engineer.
+For every trade you analyze: what went wrong, why, which assumption failed, and what the AI should learn.
+You perform 9-level analysis per the learning loop framework. Respond ONLY in valid JSON.`;
 
-    const allClosed = [
-      ...closedA.map(p => ({...p, portfolio:'A (Haiku)'})),
-      ...closedB.map(p => ({...p, portfolio:'B (Sonnet)'}))
-    ];
+    const usr = `Analyze these closed trades and write postmortems:
+${JSON.stringify(allClosed.slice(0,12))}
 
-    const userPrompt = `Write postmortems for these closed trades:
-${JSON.stringify(allClosed.slice(0,10), null, 2)}
-
-Respond with a JSON array of postmortem objects (one per trade):
+Return a JSON array — one object per trade:
 [{
   "ticker": "SYMBOL",
-  "portfolio": "A (Haiku) or B (Sonnet)",
-  "outcome": "win" or "loss",
+  "portfolio": "A (Haiku)|B (Sonnet)",
+  "outcome": "win|loss",
   "date": "ISO date",
-  "postmortem": "2-3 sentences analyzing what led to this outcome",
-  "lesson": "One concrete takeaway for the AI to improve"
+  "postmortem": "Level 1: Why did this trade win/lose? 2-3 sentences covering: was the stock wrong, timing wrong, regime wrong, news invalidated thesis, position risk.",
+  "attribution": "Level 3: Was failure in stock selection, timing, exit, or position size? Be specific.",
+  "lesson": "Concrete rule the AI should internalize.",
+  "counterfactual": "Level 7: What if held longer / stop was wider? Different lesson?",
+  "failure_category": "one of: wrong_stock|wrong_timing|regime_mismatch|news_invalidated|overconfidence|sector_weakness|stop_too_tight"
 }]`;
 
-    const raw = await callClaude(systemPrompt, userPrompt, 2000);
-    let newCritiques;
-    try { newCritiques = JSON.parse(raw.replace(/```json?|```/g,'')); }
-    catch(e) { throw new Error('Invalid JSON from Critic AI'); }
-
-    if (!Array.isArray(newCritiques)) throw new Error('Expected array from Critic');
-    
-    // Merge (avoid dupes by ticker+portfolio)
-    const existing = new Set(critiques.map(c => c.ticker+'|'+c.portfolio));
-    const fresh = newCritiques.filter(c => !existing.has(c.ticker+'|'+c.portfolio));
+    const raw = await callClaude(sys, usr, 2500);
+    const items = parseJSON(raw);
+    if (!Array.isArray(items)) throw new Error('Expected array');
+    const existing = new Set(critiques.map(c=>c.ticker+'|'+c.portfolio));
+    const fresh = items.filter(c => !existing.has(c.ticker+'|'+c.portfolio));
     critiques.push(...fresh);
     await ghPut(STUDY_REPO, 'critiques.json', critiques);
     renderCritiques();
     showToast(`✦ ${fresh.length} postmortems written`);
-  } catch(e) {
-    showToast('Critic error: '+e.message);
-  } finally {
-    btn.disabled=false; btn.classList.remove('loading');
-  }
+  } catch(e) { showToast('Critic error: '+e.message); }
+  finally { btn.disabled=false; if(sp) sp.style.display='none'; }
 }
 
 async function runClustering() {
   const totalClosed = [
-    ...portfolioA.filter(p => p.status==='closed'||p.return_pct!==undefined),
-    ...portfolioB.filter(p => p.return_pct!==undefined)
+    ...portfolioA.filter(p=>p.return_pct!==undefined),
+    ...portfolioB.filter(p=>!p.declined&&p.return_pct!==undefined)
   ];
-
-  if (totalClosed.length < 10) {
-    showToast(`Need 10+ closed trades. Currently: ${totalClosed.length}`); return;
-  }
+  if (totalClosed.length < 10) { showToast(`Need 10+ closed trades (have ${totalClosed.length})`); return; }
 
   const btn = document.getElementById('cluster-btn');
   btn.disabled=true; btn.classList.add('loading');
-
   try {
-    const systemPrompt = `You are a trading pattern analyst. Analyze a set of trade postmortems and critique records to find recurring mistake patterns. Respond in valid JSON only.`;
-    const userPrompt = `Given these postmortems and trade records, identify 3-5 recurring mistake patterns:
-
-Postmortems: ${JSON.stringify(critiques.slice(-20))}
-Recent picks A: ${JSON.stringify(portfolioA.slice(-20))}
-Recent picks B: ${JSON.stringify(portfolioB.slice(-20))}
+    const sys = `You are a trading pattern analyst. Find recurring mistake clusters from postmortems and trade records. Respond ONLY in valid JSON.`;
+    const usr = `Analyze these records and find 3-5 recurring mistake patterns:
+Postmortems: ${JSON.stringify(critiques.slice(-30))}
+Failure categories from critiques: ${critiques.map(c=>c.failure_category).filter(Boolean).join(', ')}
 
 Respond with a JSON array:
 [{
-  "pattern": "Short name for this pattern (e.g. 'FOMO entries', 'Ignoring sector risk')",
-  "frequency": number of times observed,
-  "description": "2-3 sentences describing the mistake pattern",
-  "recommendation": "One specific rule change to address this"
+  "pattern": "Short name (e.g. High-VIX Breakout Trap)",
+  "frequency": number,
+  "description": "2-3 sentences. When does this pattern occur? Why does it fail?",
+  "recommendation": "Specific rule: e.g. 'Do not enter momentum breakouts when VIX > 25'"
 }]`;
 
-    const raw = await callClaude(systemPrompt, userPrompt, 1500);
-    let newClusters;
-    try { newClusters = JSON.parse(raw.replace(/```json?|```/g,'')); }
-    catch(e) { throw new Error('Invalid JSON from cluster AI'); }
-
-    clusters = Array.isArray(newClusters) ? newClusters : [];
+    const raw = await callClaude(sys, usr, 1500);
+    clusters = parseJSON(raw);
+    if (!Array.isArray(clusters)) throw new Error('Expected array');
     await ghPut(STUDY_REPO, 'mistake_clusters.json', clusters);
     renderClusters();
-    showToast(`✦ ${clusters.length} mistake patterns identified`);
-  } catch(e) {
-    showToast('Cluster error: '+e.message);
-  } finally {
-    btn.disabled=false; btn.classList.remove('loading');
-  }
+    // Auto-update strategy memory with new rules
+    await updateStrategyMemory(true);
+    showToast(`✦ ${clusters.length} mistake patterns found — strategy memory updated`);
+  } catch(e) { showToast('Cluster error: '+e.message); }
+  finally { btn.disabled=false; btn.classList.remove('loading'); }
 }
 
-/* ─── TOAST ───────────────────────────────────────── */
+/* ══════════════════════════════════════════════════
+   LEARNING LOOP
+══════════════════════════════════════════════════ */
+async function loadLearningData() {
+  [strategyMemory, calibrationLog, regimeLog, tradeJournal] = await Promise.all([
+    ghGetRaw(STUDY_REPO, 'strategy_memory.json').then(d => d||{rules:[],factor_weights:{},updated_at:null}),
+    ghGetRaw(STUDY_REPO, 'calibration_log.json').then(d => d||[]),
+    ghGetRaw(STUDY_REPO, 'regime_log.json').then(d => d||{current_regime:null,history:[]}),
+    ghGetRaw(STUDY_REPO, 'trade_journal.json').then(d => d||[])
+  ]);
+}
+
+function renderLearning() {
+  renderRules();
+  renderFactors();
+  renderCalibration();
+  renderRegime();
+}
+
+function renderRules() {
+  const rules = strategyMemory.rules || [];
+  document.getElementById('badge-rules').textContent = rules.length;
+  document.getElementById('rules-wrap').innerHTML = !rules.length
+    ? `<div class="empty-state"><div class="empty-icon">📖</div><div class="empty-title">No rules yet</div><div class="empty-desc">Run mistake clustering to generate rules</div></div>`
+    : rules.map((r,i) => `
+      <div class="memory-rule">
+        <div class="memory-rule-text">${r}</div>
+        <div class="memory-rule-meta">Rule ${i+1} · Applied to every Portfolio B pick</div>
+      </div>`).join('');
+}
+
+function renderFactors() {
+  const fw = strategyMemory.factor_weights || {};
+  const keys = Object.keys(fw);
+  document.getElementById('factors-wrap').innerHTML = !keys.length
+    ? `<div class="empty-state"><div class="empty-icon">⚖️</div><div class="empty-title">No factor weights yet</div></div>`
+    : keys.map(k => {
+        const v = fw[k];
+        const pct = Math.round((v.weight||0.5)*100);
+        const trend = v.trend || 'stable';
+        return `<div class="factor-row">
+          <div class="factor-name">${k}</div>
+          <div class="factor-weight-bar"><div class="factor-weight-fill" style="width:${pct}%"></div></div>
+          <div class="factor-weight-val">${pct}%</div>
+          <div class="factor-trend ${trend==='up'?'green':trend==='down'?'red':'amber'}">${trend==='up'?'↑':trend==='down'?'↓':'→'}</div>
+        </div>`;
+      }).join('');
+}
+
+function renderCalibration() {
+  if (!calibrationLog.length) return;
+  const buckets = {90:[],80:[],70:[],60:[]};
+  portfolioB.filter(p=>!p.declined&&p.return_pct!==undefined).forEach(p => {
+    const c = p.confidence||0;
+    const bucket = c>=90?90:c>=80?80:c>=70?70:60;
+    if (buckets[bucket]) buckets[bucket].push(p.return_pct > 0 ? 1 : 0);
+  });
+  const grid = document.getElementById('cal-grid');
+  const cells = Object.entries(buckets).map(([b, arr]) => {
+    if (!arr.length) return `<div class="cal-cell"><div class="cal-bucket">${b}%+</div><div class="cal-actual">—</div><div class="cal-label">no data</div></div>`;
+    const actual = Math.round((arr.reduce((a,b)=>a+b,0)/arr.length)*100);
+    const diff = actual - parseInt(b);
+    const cls = Math.abs(diff)<=10?'cal-good':'cal-bad';
+    return `<div class="cal-cell"><div class="cal-bucket">${b}%+ conf</div><div class="cal-actual ${cls}">${actual}%</div><div class="cal-label">actual wins (${arr.length} trades)</div></div>`;
+  });
+  grid.innerHTML = cells.join('');
+}
+
+function renderRegime() {
+  const regime = regimeLog.current_regime;
+  const el = document.getElementById('regime-display');
+  if (!regime) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🌡</div><div class="empty-title">Regime unknown</div><div class="empty-desc">Run detection to classify current market environment</div></div>`;
+    return;
+  }
+  const classMap = {
+    'Bull Low Vol':'regime-bull-low','Bull High Vol':'regime-bull-high',
+    'Bear Low Vol':'regime-bear-low','Bear High Vol':'regime-bear-high'
+  };
+  const cls = classMap[regime.label] || 'regime-bull-low';
+  el.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Current Regime</div>
+        <span class="regime-pill ${cls}">${regime.label}</span>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:12px;color:var(--label);line-height:1.7;margin-bottom:8px">${regime.description}</div>
+        <div style="font-size:12px;color:var(--accent-c)">→ Strategy guidance: ${regime.guidance}</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:12px">Detected: ${new Date(regime.detected_at||Date.now()).toLocaleString()}</div>`;
+}
+
+async function detectRegime() {
+  const btn = document.getElementById('regime-btn');
+  btn.disabled=true;
+  const sp = btn.querySelector('.spinner');
+  if(sp) sp.style.display='block';
+  try {
+    const sys = `You are a market regime classifier. Classify the current market environment based on the data provided. Respond ONLY in valid JSON.`;
+    const usr = `Classify the current market regime based on your knowledge of current conditions as of ${new Date().toDateString()}.
+
+Regimes: Bull Low Vol, Bull High Vol, Bear Low Vol, Bear High Vol
+
+Respond with:
+{
+  "label": "Bull Low Vol|Bull High Vol|Bear Low Vol|Bear High Vol",
+  "vix": "estimated current VIX level (number)",
+  "description": "2 sentences on current market state",
+  "guidance": "Which strategies work in this regime? Which to avoid?",
+  "momentum_works": true|false,
+  "mean_reversion_works": true|false,
+  "breakouts_reliable": true|false,
+  "detected_at": "${new Date().toISOString()}"
+}`;
+
+    const raw = await callClaude(sys, usr, 600);
+    const regime = parseJSON(raw);
+    regimeLog.current_regime = regime;
+    regimeLog.history = regimeLog.history || [];
+    regimeLog.history.push(regime);
+    await ghPut(STUDY_REPO, 'regime_log.json', regimeLog);
+    renderRegime();
+    showToast(`✦ Regime: ${regime.label}`);
+  } catch(e) { showToast('Regime error: '+e.message); }
+  finally { btn.disabled=false; if(sp) sp.style.display='none'; }
+}
+
+async function updateStrategyMemory(silent=false) {
+  const btn = document.getElementById('update-mem-btn');
+  if (!silent) { btn.disabled=true; btn.querySelector('.spinner').style.display='block'; }
+  try {
+    if (!clusters.length && !critiques.length) { if(!silent) showToast('Need critiques or clusters first'); return; }
+
+    const sys = `You are a strategy synthesis AI. Convert mistake patterns and critique lessons into actionable trading rules and factor weights. Respond ONLY in valid JSON.`;
+    const usr = `Based on these mistake patterns and lessons, synthesize the strategy memory:
+
+Mistake clusters: ${JSON.stringify(clusters)}
+Recent lessons from critiques: ${JSON.stringify(critiques.slice(-15).map(c=>({ticker:c.ticker,lesson:c.lesson,failure_category:c.failure_category})))}
+
+Respond with:
+{
+  "rules": [
+    "Concrete rule 1 (e.g. Do not enter momentum breakouts when VIX > 25)",
+    "Concrete rule 2",
+    "... up to 10 rules total"
+  ],
+  "factor_weights": {
+    "momentum": {"weight": 0.0-1.0, "trend": "up|down|stable"},
+    "mean_reversion": {"weight": 0.0-1.0, "trend": "up|down|stable"},
+    "value": {"weight": 0.0-1.0, "trend": "up|down|stable"},
+    "event_driven": {"weight": 0.0-1.0, "trend": "up|down|stable"},
+    "sector_rotation": {"weight": 0.0-1.0, "trend": "up|down|stable"},
+    "insider_signals": {"weight": 0.0-1.0, "trend": "up|down|stable"}
+  },
+  "updated_at": "${new Date().toISOString()}"
+}`;
+
+    const raw = await callClaude(sys, usr, 1200);
+    const mem = parseJSON(raw);
+    strategyMemory = mem;
+    await ghPut(STUDY_REPO, 'strategy_memory.json', strategyMemory);
+    document.getElementById('badge-rules').textContent = (mem.rules||[]).length;
+    renderRules(); renderFactors();
+    if (!silent) showToast(`✦ Strategy memory updated — ${(mem.rules||[]).length} rules`);
+  } catch(e) { if(!silent) showToast('Memory update error: '+e.message); }
+  finally { if(!silent) { btn.disabled=false; btn.querySelector('.spinner').style.display='none'; } }
+}
+
+async function runCalibration() {
+  const closed = portfolioB.filter(p=>!p.declined&&p.return_pct!==undefined);
+  if (closed.length < 5) { showToast('Need 5+ closed B trades for calibration'); return; }
+  calibrationLog = closed.map(p=>({ confidence: p.confidence, win: p.return_pct>0, date: p.date }));
+  await ghPut(STUDY_REPO, 'calibration_log.json', calibrationLog);
+  renderCalibration();
+  showToast('✦ Calibration updated');
+}
+
+async function runCounterfactual() {
+  const btn = document.getElementById('cf-btn');
+  btn.disabled=true; btn.querySelector('.spinner').style.display='block';
+  try {
+    const closed = [
+      ...portfolioA.filter(p=>p.return_pct!==undefined).slice(-8).map(p=>({...p,portfolio:'A'})),
+      ...portfolioB.filter(p=>!p.declined&&p.return_pct!==undefined).map(p=>({...p,portfolio:'B'}))
+    ];
+    if (!closed.length) { showToast('No closed trades'); return; }
+
+    const sys = `You are a counterfactual trading analyst. For each closed trade, determine if failure was due to stock selection or execution (timing/exit/stop). Respond ONLY in valid JSON.`;
+    const usr = `Analyze these closed trades for counterfactual insights:
+${JSON.stringify(closed.slice(0,10))}
+
+For each, respond:
+[{
+  "ticker": "SYMBOL",
+  "portfolio": "A|B",
+  "actual_return": number,
+  "counterfactual": "What if held 30/60 days longer? What if stop was 50% wider? What if position was half?",
+  "selection_verdict": "good|bad",
+  "execution_verdict": "good|bad",
+  "lesson": "Was it wrong stock or wrong execution? What specific change would have improved outcome?"
+}]`;
+
+    const raw = await callClaude(sys, usr, 1500);
+    const items = parseJSON(raw);
+    document.getElementById('cf-wrap').innerHTML = Array.isArray(items)
+      ? items.map(c => `
+        <div style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+            <strong class="mono">${c.ticker}</strong>
+            <div style="display:flex;gap:6px">
+              <span class="badge ${c.selection_verdict==='good'?'badge-win':'badge-loss'}">Selection: ${c.selection_verdict}</span>
+              <span class="badge ${c.execution_verdict==='good'?'badge-win':'badge-loss'}">Execution: ${c.execution_verdict}</span>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--label);margin-bottom:8px">${c.counterfactual}</div>
+          <div style="font-size:11px;color:var(--accent-c)">→ ${c.lesson}</div>
+        </div>`).join('')
+      : `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Parse error</div></div>`;
+    showToast('✦ Counterfactual analysis complete');
+  } catch(e) { showToast('CF error: '+e.message); }
+  finally { btn.disabled=false; btn.querySelector('.spinner').style.display='none'; }
+}
+
+/* ── TOAST ─────────────────────────────────────── */
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3500);
+  setTimeout(()=>t.classList.remove('show'), 4000);
 }
 
-/* ─── CLOCK ───────────────────────────────────────── */
+/* ── CLOCK ─────────────────────────────────────── */
 function updateClock() {
   const el = document.getElementById('live-time');
-  if (el) el.textContent = new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
+  if (el) el.textContent = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
 }
 
-/* ─── INIT ────────────────────────────────────────── */
+/* ── INIT ──────────────────────────────────────── */
 async function initApp() {
   updateClock(); setInterval(updateClock, 30000);
-  await Promise.all([loadPortfolioA(), loadPortfolioB(), loadCritic()]);
+  await Promise.all([
+    loadPortfolioA(),
+    loadPortfolioB(),
+    loadCritic(),
+    loadLearningData()
+  ]);
+  renderCalibration();
+  renderRegime();
 }
 </script>
 </body>
