@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PulseStock Study</title>
+<style>
+  :root {
+    --bg: #0a0d12;
+    --surface: #111620;
+    --surface2: #1a2035;
+    --border: #1e2a40;
+    --accent-a: #3b82f6;
+    --accent-b: #a855f7;
+    --accent-c: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --label: #94a3b8;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --font-ui: 'Inter', system-ui, sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:var(--font-ui); min-height:100vh; }
+
+  /* ─── AUTH GATE ──────────────────────────────────── */
+  #auth-gate {
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(ellipse at 50% 0%, #1a2a4a 0%, var(--bg) 60%);
+  }
+  .auth-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:48px 40px; width:360px; text-align:center;
+  }
+  .auth-logo { font-size:11px; letter-spacing:0.25em; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+  .auth-title { font-size:22px; font-weight:700; margin-bottom:4px; }
+  .auth-sub { font-size:13px; color:var(--muted); margin-bottom:32px; }
+  .auth-badge {
+    display:inline-flex; align-items:center; gap:6px; background:#1a2035;
+    border:1px solid #2a3a5a; border-radius:6px; padding:4px 10px;
+    font-size:11px; color:var(--muted); margin-bottom:32px;
+  }
+  .auth-badge::before { content:'🔒'; font-size:10px; }
+  .auth-input {
+    width:100%; background:var(--bg); border:1px solid var(--border); border-radius:8px;
+    padding:12px 16px; color:var(--text); font-size:15px; outline:none; margin-bottom:12px;
+    font-family:var(--font-ui); letter-spacing:0.05em;
+    transition: border-color 0.2s;
+  }
+  .auth-input:focus { border-color:var(--accent-a); }
+  .auth-btn {
+    width:100%; background:var(--accent-a); color:#fff; border:none; border-radius:8px;
+    padding:13px; font-size:14px; font-weight:600; cursor:pointer; transition:opacity 0.2s;
+  }
+  .auth-btn:hover { opacity:0.85; }
+  .auth-err { color:var(--danger); font-size:12px; margin-top:8px; min-height:18px; }
+
+  /* ─── MAIN APP ───────────────────────────────────── */
+  #app { display:none; }
+  .topbar {
+    display:flex; align-items:center; gap:16px; padding:0 24px;
+    height:56px; background:var(--surface); border-bottom:1px solid var(--border);
+    position:sticky; top:0; z-index:100;
+  }
+  .topbar-logo { font-size:13px; font-weight:700; letter-spacing:0.05em; }
+  .topbar-logo span { color:var(--accent-a); }
+  .topbar-tag {
+    font-size:10px; letter-spacing:0.15em; text-transform:uppercase; color:var(--muted);
+    background:var(--surface2); border:1px solid var(--border); border-radius:4px; padding:2px 8px;
+  }
+  .topbar-right { margin-left:auto; display:flex; align-items:center; gap:12px; }
+  .status-dot { width:7px; height:7px; border-radius:50%; background:var(--accent-c); }
+  .status-label { font-size:12px; color:var(--muted); }
+
+  /* Tabs */
+  .tabs { display:flex; gap:2px; padding:16px 24px 0; border-bottom:1px solid var(--border); background:var(--surface); }
+  .tab {
+    padding:10px 20px; font-size:13px; font-weight:500; cursor:pointer;
+    border-bottom:2px solid transparent; color:var(--muted); transition:all 0.15s;
+    border-radius:6px 6px 0 0;
+  }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--text); border-bottom-color:var(--accent-a); }
+  .tab-badge {
+    display:inline-flex; align-items:center; justify-content:center;
+    background:var(--surface2); border-radius:10px; padding:1px 6px;
+    font-size:10px; margin-left:6px; color:var(--label);
+  }
+
+  /* Content */
+  .content { padding:24px; max-width:1400px; margin:0 auto; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  /* Cards */
+  .card {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:20px;
+  }
+  .card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .card-title { font-size:14px; font-weight:600; color:var(--label); text-transform:uppercase; letter-spacing:0.06em; }
+
+  /* Stats row */
+  .stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+  .stat-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:16px 20px;
+  }
+  .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:6px; }
+  .stat-value { font-size:26px; font-weight:700; font-family:var(--font-mono); }
+  .stat-sub { font-size:11px; color:var(--muted); margin-top:4px; }
+  .green { color:var(--accent-c); }
+  .red { color:var(--danger); }
+  .blue { color:var(--accent-a); }
+  .purple { color:var(--accent-b); }
+
+  /* Tables */
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  thead th {
+    text-align:left; padding:10px 12px; color:var(--muted); font-weight:500;
+    font-size:11px; text-transform:uppercase; letter-spacing:0.06em;
+    border-bottom:1px solid var(--border);
+  }
+  tbody tr { border-bottom:1px solid #111820; transition:background 0.1s; }
+  tbody tr:hover { background:var(--surface2); }
+  tbody td { padding:11px 12px; color:var(--text); }
+  .mono { font-family:var(--font-mono); }
+
+  /* Badges */
+  .badge {
+    display:inline-block; padding:2px 8px; border-radius:5px;
+    font-size:10px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase;
+  }
+  .badge-buy { background:#0f2d1a; color:#34d399; }
+  .badge-sell { background:#2d1010; color:#f87171; }
+  .badge-hold { background:#1a1d10; color:#d4d47a; }
+  .badge-open { background:#0f1f35; color:#60a5fa; }
+  .badge-closed { background:#1a1a1a; color:#64748b; }
+  .badge-win { background:#0f2d1a; color:#34d399; }
+  .badge-loss { background:#2d1010; color:#f87171; }
+
+  /* Confidence meter */
+  .conf-bar { display:flex; align-items:center; gap:8px; }
+  .conf-track { flex:1; height:4px; background:var(--border); border-radius:2px; }
+  .conf-fill { height:100%; border-radius:2px; background:var(--accent-b); }
+  .conf-val { font-size:11px; font-family:var(--font-mono); color:var(--label); width:32px; text-align:right; }
+
+  /* Pick cards (Portfolio B) */
+  .pick-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:16px; }
+  .pick-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:18px; cursor:pointer; transition:border-color 0.15s;
+  }
+  .pick-card:hover { border-color:var(--accent-b); }
+  .pick-card-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+  .pick-ticker { font-size:18px; font-weight:800; font-family:var(--font-mono); }
+  .pick-date { font-size:11px; color:var(--muted); }
+  .pick-reasoning { font-size:12px; color:var(--label); line-height:1.6; margin-bottom:12px; }
+  .pick-risk {
+    background:#1a1220; border:1px solid #2a1a35; border-radius:6px;
+    padding:8px 10px; font-size:11px; color:#c084fc; margin-bottom:12px;
+  }
+  .pick-risk::before { content:'⚠ Key Risk: '; font-weight:600; }
+  .pick-cot-toggle { font-size:11px; color:var(--accent-a); cursor:pointer; }
+  .pick-cot { font-size:11px; color:var(--muted); line-height:1.7; margin-top:8px; display:none; white-space:pre-wrap; }
+  .pick-cot.open { display:block; }
+
+  /* Compare view */
+  .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .compare-col-header {
+    display:flex; align-items:center; gap:10px; margin-bottom:12px;
+    padding-bottom:12px; border-bottom:1px solid var(--border);
+  }
+  .col-a-dot { width:10px; height:10px; border-radius:50%; background:var(--accent-a); }
+  .col-b-dot { width:10px; height:10px; border-radius:50%; background:var(--accent-b); }
+  .col-label { font-size:13px; font-weight:600; }
+  .col-sublabel { font-size:11px; color:var(--muted); }
+  .divergence-banner {
+    background:#1a1220; border:1px solid #3b1f50; border-radius:8px;
+    padding:12px 16px; margin-bottom:16px; font-size:12px; color:#c084fc;
+    display:flex; align-items:flex-start; gap:10px;
+  }
+  .divergence-banner .icon { font-size:16px; flex-shrink:0; }
+
+  /* Critic */
+  .critique-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:20px; margin-bottom:12px;
+  }
+  .critique-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+  .critique-ticker { font-size:16px; font-weight:700; font-family:var(--font-mono); }
+  .critique-verdict { font-size:12px; }
+  .mistake-cluster {
+    background:#1a1a10; border:1px solid #2a2a1a; border-radius:8px;
+    padding:14px 16px; margin-bottom:10px;
+  }
+  .cluster-label { font-size:12px; font-weight:600; color:var(--warn); margin-bottom:6px; }
+  .cluster-desc { font-size:12px; color:var(--label); line-height:1.6; }
+
+  /* Generate button */
+  .gen-btn {
+    background: linear-gradient(135deg, #6d28d9, #a855f7);
+    color:#fff; border:none; border-radius:8px; padding:11px 20px;
+    font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px;
+    transition:opacity 0.2s;
+  }
+  .gen-btn:hover { opacity:0.85; }
+  .gen-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .gen-btn .spinner {
+    width:14px; height:14px; border:2px solid rgba(255,255,255,0.3);
+    border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; display:none;
+  }
+  .gen-btn.loading .spinner { display:block; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* Toast */
+  #toast {
+    position:fixed; bottom:24px; right:24px; background:var(--surface);
+    border:1px solid var(--border); border-radius:8px; padding:12px 18px;
+    font-size:13px; color:var(--text); opacity:0; transform:translateY(8px);
+    transition:all 0.2s; pointer-events:none; z-index:999;
+  }
+  #toast.show { opacity:1; transform:translateY(0); }
+
+  /* Loading state */
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+    background-size:200% 100%; animation:shimmer 1.5s infinite; border-radius:6px; height:14px;
+  }
+  @keyframes shimmer { to { background-position:-200% 0; } }
+
+  /* Empty state */
+  .empty-state { text-align:center; padding:60px 20px; color:var(--muted); }
+  .empty-icon { font-size:36px; margin-bottom:12px; }
+  .empty-title { font-size:15px; font-weight:600; color:var(--label); margin-bottom:6px; }
+  .empty-desc { font-size:13px; }
+
+  /* Split pane for CoT */
+  .modal-overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200;
+    display:none; align-items:center; justify-content:center; padding:24px;
+  }
+  .modal-overlay.open { display:flex; }
+  .modal {
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    width:100%; max-width:680px; max-height:85vh; overflow-y:auto; padding:28px;
+  }
+  .modal-close { float:right; cursor:pointer; color:var(--muted); font-size:18px; }
+  .modal-ticker { font-size:22px; font-weight:800; font-family:var(--font-mono); margin-bottom:4px; }
+  .modal-section { margin-top:18px; }
+  .modal-section-title { font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); margin-bottom:8px; }
+  .modal-body { font-size:13px; color:var(--label); line-height:1.75; }
+  .modal-risk { background:#1a1220; border:1px solid #2a1a35; border-radius:6px; padding:10px 14px; font-size:13px; color:#c084fc; }
+
+  /* Responsive */
+  @media(max-width:768px) {
+    .compare-grid { grid-template-columns:1fr; }
+    .pick-grid { grid-template-columns:1fr; }
+    .stats-row { grid-template-columns:repeat(2,1fr); }
+    .content { padding:16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- AUTH GATE -->
+<div id="auth-gate">
+  <div class="auth-card">
+    <div class="auth-logo">PulseStock</div>
+    <div class="auth-title">Study Project</div>
+    <div class="auth-sub">Internal AI Research Platform</div>
+    <div class="auth-badge">Internal access only</div>
+    <input type="password" class="auth-input" id="pass-input" placeholder="Access code" />
+    <button class="auth-btn" onclick="checkAuth()">Enter</button>
+    <div class="auth-err" id="auth-err"></div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-logo">Pulse<span>Stock</span></div>
+    <div class="topbar-tag">Study Mode</div>
+    <div class="topbar-right">
+      <div class="status-dot"></div>
+      <div class="status-label" id="live-time"></div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="setTab('a')">Portfolio A <span class="tab-badge" id="badge-a">—</span></div>
+    <div class="tab" onclick="setTab('b')">Portfolio B <span class="tab-badge" id="badge-b">—</span></div>
+    <div class="tab" onclick="setTab('compare')">Compare</div>
+    <div class="tab" onclick="setTab('critic')">Critic AI <span class="tab-badge" id="badge-critic">—</span></div>
+  </div>
+
+  <div class="content">
+
+    <!-- PORTFOLIO A -->
+    <div class="panel active" id="panel-a">
+      <div class="stats-row" id="stats-a">
+        <div class="stat-card"><div class="stat-label">Total Picks</div><div class="stat-value blue" id="a-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value" id="a-winrate">—</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Return</div><div class="stat-value" id="a-avgret">—</div></div>
+        <div class="stat-card"><div class="stat-label">Open Positions</div><div class="stat-value blue" id="a-open">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Haiku Picks — Portfolio A (read-only)</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticker</th><th>Date</th><th>Action</th><th>Entry</th><th>Target</th><th>Stop</th><th>Status</th><th>Return</th>
+              </tr>
+            </thead>
+            <tbody id="table-a"></tbody>
+          </table>
+        </div>
+        <div id="loading-a" class="empty-state"><div class="empty-icon">⏳</div><div class="empty-title">Loading Portfolio A…</div></div>
+      </div>
+    </div>
+
+    <!-- PORTFOLIO B -->
+    <div class="panel" id="panel-b">
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-label">B Picks</div><div class="stat-value purple" id="b-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Win Rate</div><div class="stat-value" id="b-winrate">—</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Return</div><div class="stat-value" id="b-avgret">—</div></div>
+        <div class="stat-card"><div class="stat-label">80%+ Conf</div><div class="stat-value purple" id="b-highconf">—</div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div class="card-title">Generate Portfolio B Pick (Sonnet · 80% gate)</div>
+          <button class="gen-btn" id="gen-b-btn" onclick="generatePickB()">
+            <span class="spinner"></span>
+            ✦ Generate Pick
+          </button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          Sonnet 4.6 · Chain-of-thought · 80% confidence threshold · Key risk required
+        </div>
+      </div>
+      <div class="pick-grid" id="picks-b"></div>
+      <div id="empty-b" class="empty-state" style="display:none;">
+        <div class="empty-icon">🧪</div>
+        <div class="empty-title">No Portfolio B picks yet</div>
+        <div class="empty-desc">Generate your first Sonnet pick above</div>
+      </div>
+    </div>
+
+    <!-- COMPARE -->
+    <div class="panel" id="panel-compare">
+      <div id="divergences-wrap"></div>
+      <div class="compare-grid">
+        <div>
+          <div class="compare-col-header">
+            <div class="col-a-dot"></div>
+            <div>
+              <div class="col-label">Portfolio A — Haiku</div>
+              <div class="col-sublabel">Standard analysis · fast · broad coverage</div>
+            </div>
+          </div>
+          <div id="compare-a"></div>
+        </div>
+        <div>
+          <div class="compare-col-header">
+            <div class="col-b-dot"></div>
+            <div>
+              <div class="col-label">Portfolio B — Sonnet</div>
+              <div class="col-sublabel">Chain-of-thought · 80% confidence gate</div>
+            </div>
+          </div>
+          <div id="compare-b"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CRITIC AI -->
+    <div class="panel" id="panel-critic">
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div class="card-title">Mistake Clusters</div>
+          <button class="gen-btn" id="cluster-btn" onclick="runClustering()">
+            <span class="spinner"></span>
+            ✦ Analyze Patterns
+          </button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Requires 10+ closed trades to activate</div>
+        <div id="clusters-wrap"><div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">No clusters yet</div><div class="empty-desc">Run analysis after 10+ closed trades</div></div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Trade Postmortems</div>
+          <button class="gen-btn" id="critic-btn" onclick="runCritic()">
+            <span class="spinner"></span>
+            ✦ Run Critic
+          </button>
+        </div>
+        <div id="critiques-wrap"></div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /app -->
+
+<!-- Pick Detail Modal -->
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <span class="modal-close" onclick="closeModal()">✕</span>
+    <div class="modal-ticker" id="m-ticker"></div>
+    <div id="m-date" style="font-size:12px;color:var(--muted);margin-bottom:4px;"></div>
+    <div id="m-badges" style="margin-bottom:12px;"></div>
+    <div class="modal-section">
+      <div class="modal-section-title">Chain-of-Thought Reasoning</div>
+      <div class="modal-body" id="m-cot"></div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Final Reasoning</div>
+      <div class="modal-body" id="m-reasoning"></div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Key Risk</div>
+      <div class="modal-risk" id="m-risk"></div>
+    </div>
+    <div class="modal-section" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+      <div><div class="modal-section-title">Entry</div><div class="modal-body mono" id="m-entry"></div></div>
+      <div><div class="modal-section-title">Target</div><div class="modal-body mono" id="m-target"></div></div>
+      <div><div class="modal-section-title">Stop</div><div class="modal-body mono" id="m-stop"></div></div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">Confidence</div>
+      <div class="conf-bar">
+        <div class="conf-track" style="height:8px;border-radius:4px;"><div class="conf-fill" id="m-conf-fill" style="height:100%;border-radius:4px;"></div></div>
+        <div class="conf-val" id="m-conf-val"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ─── CONSTANTS ───────────────────────────────────── */
+const GH_TOKEN = '__GH_TOKEN__';
+const ANT_KEY  = '__ANT_KEY__';
+const DATA_REPO   = 'mscharbo-commits/pulsestock-data';
+const STUDY_REPO  = 'mscharbo-commits/pulsestock-study-data';
+const ACCESS_CODE = 'pulsestock2026';
+
+/* ─── AUTH ────────────────────────────────────────── */
+function checkAuth() {
+  const val = document.getElementById('pass-input').value.trim();
+  if (val === ACCESS_CODE) {
+    document.getElementById('auth-gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    initApp();
+  } else {
+    document.getElementById('auth-err').textContent = 'Incorrect access code.';
+    document.getElementById('pass-input').value = '';
+  }
+}
+document.getElementById('pass-input').addEventListener('keydown', e => { if(e.key==='Enter') checkAuth(); });
+
+/* ─── TABS ────────────────────────────────────────── */
+function setTab(t) {
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('panel-'+t).classList.add('active');
+  if (t === 'compare') renderCompare();
+}
+
+/* ─── GITHUB HELPERS ──────────────────────────────── */
+async function ghGet(repo, path) {
+  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    headers: { Authorization: `token ${GH_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
+  });
+  if (!r.ok) return null;
+  const d = await r.json();
+  return JSON.parse(atob(d.content.replace(/\n/g,'')));
+}
+
+async function ghGetRaw(repo, path) {
+  const r = await fetch(`https://raw.githubusercontent.com/${repo}/main/${path}`);
+  if (!r.ok) return null;
+  return r.json();
+}
+
+async function ghPut(repo, path, data, sha) {
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+  // Get sha if not provided
+  if (!sha) {
+    const meta = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+      headers: { Authorization: `token ${GH_TOKEN}` }
+    });
+    if (meta.ok) { const m = await meta.json(); sha = m.sha; }
+  }
+  const body = { message: `update ${path}`, content, ...(sha ? {sha} : {}) };
+  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    method: 'PUT',
+    headers: { Authorization: `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return r.ok;
+}
+
+/* ─── ANTHROPIC HELPER ────────────────────────────── */
+async function callClaude(system, user, maxTokens=2000) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANT_KEY,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: user }]
+    })
+  });
+  const d = await r.json();
+  return d.content?.[0]?.text || '';
+}
+
+/* ─── PORTFOLIO A DATA ────────────────────────────── */
+let portfolioA = [];
+
+async function loadPortfolioA() {
+  try {
+    // Load from multiple batch files and portfolios
+    let picks = [];
+    // Core portfolio
+    const core = await ghGetRaw(DATA_REPO, 'core_portfolio.json');
+    if (core) picks.push(...(Array.isArray(core) ? core : [core]));
+    // Swing portfolio
+    const swing = await ghGetRaw(DATA_REPO, 'swing_portfolio.json');
+    if (swing) picks.push(...(Array.isArray(swing) ? swing : [swing]));
+    // Sample batches (0-4 to avoid too many requests)
+    for (let i = 0; i <= 4; i++) {
+      const batch = await ghGetRaw(DATA_REPO, `batch_${i}.json`);
+      if (batch && Array.isArray(batch)) picks.push(...batch);
+    }
+    portfolioA = picks.slice(0, 200); // cap
+    renderPortfolioA();
+  } catch(e) {
+    console.error('Portfolio A load error:', e);
+    document.getElementById('loading-a').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load Portfolio A data</div></div>';
+  }
+}
+
+function renderPortfolioA() {
+  const tbody = document.getElementById('table-a');
+  document.getElementById('loading-a').style.display = 'none';
+  
+  if (!portfolioA.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:32px;">No picks found</td></tr>';
+    return;
+  }
+
+  let wins=0, totalRet=0, closed=0, open=0;
+  tbody.innerHTML = portfolioA.map(p => {
+    const ret = p.return_pct || p.returnPct || p.pnl_pct || null;
+    const status = p.status || (ret !== null ? 'closed' : 'open');
+    if (status === 'open') open++; else closed++;
+    if (ret !== null) { totalRet += parseFloat(ret); if (parseFloat(ret) > 0) wins++; }
+    const retStr = ret !== null ? `<span class="${parseFloat(ret)>=0?'green':'red'}">${parseFloat(ret)>=0?'+':''}${parseFloat(ret).toFixed(1)}%</span>` : '—';
+    const action = p.action || p.signal || p.recommendation || 'BUY';
+    const ticker = p.ticker || p.symbol || p.stock || '?';
+    const date = p.date || p.created_at || p.timestamp || '';
+    const entry = p.entry_price || p.entryPrice || p.price || '—';
+    const target = p.target_price || p.targetPrice || p.target || '—';
+    const stop = p.stop_loss || p.stopLoss || p.stop || '—';
+    return `<tr>
+      <td class="mono" style="font-weight:700">${ticker}</td>
+      <td style="color:var(--muted)">${date ? new Date(date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—'}</td>
+      <td><span class="badge badge-${action.toLowerCase()}">${action}</span></td>
+      <td class="mono">$${typeof entry==='number'?entry.toFixed(2):entry}</td>
+      <td class="mono">$${typeof target==='number'?target.toFixed(2):target}</td>
+      <td class="mono">$${typeof stop==='number'?stop.toFixed(2):stop}</td>
+      <td><span class="badge badge-${status}">${status}</span></td>
+      <td>${retStr}</td>
+    </tr>`;
+  }).join('');
+
+  const winRate = closed > 0 ? ((wins/closed)*100).toFixed(0) : '—';
+  const avgRet = closed > 0 ? (totalRet/closed).toFixed(1) : '—';
+  document.getElementById('a-total').textContent = portfolioA.length;
+  document.getElementById('a-winrate').textContent = winRate !== '—' ? winRate+'%' : '—';
+  document.getElementById('a-winrate').className = 'stat-value ' + (parseFloat(winRate)>=50?'green':'red');
+  document.getElementById('a-avgret').textContent = avgRet !== '—' ? avgRet+'%' : '—';
+  document.getElementById('a-avgret').className = 'stat-value ' + (parseFloat(avgRet)>=0?'green':'red');
+  document.getElementById('a-open').textContent = open;
+  document.getElementById('badge-a').textContent = portfolioA.length;
+}
+
+/* ─── PORTFOLIO B ─────────────────────────────────── */
+let portfolioB = [];
+
+async function loadPortfolioB() {
+  portfolioB = await ghGetRaw(STUDY_REPO, 'portfolio_b.json') || [];
+  renderPortfolioB();
+}
+
+function renderPortfolioB() {
+  const grid = document.getElementById('picks-b');
+  const empty = document.getElementById('empty-b');
+  document.getElementById('b-total').textContent = portfolioB.length;
+  document.getElementById('badge-b').textContent = portfolioB.length;
+
+  if (!portfolioB.length) { grid.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+
+  let wins=0, totalRet=0, closed=0, highConf=0;
+  portfolioB.forEach(p => {
+    if ((p.confidence||0) >= 80) highConf++;
+    const ret = p.return_pct;
+    if (ret !== undefined) { closed++; totalRet+=ret; if(ret>0) wins++; }
+  });
+
+  document.getElementById('b-winrate').textContent = closed>0 ? ((wins/closed)*100).toFixed(0)+'%' : '—';
+  document.getElementById('b-winrate').className = 'stat-value ' + (closed>0&&wins/closed>=0.5?'green':'red');
+  document.getElementById('b-avgret').textContent = closed>0 ? (totalRet/closed).toFixed(1)+'%' : '—';
+  document.getElementById('b-highconf').textContent = highConf;
+
+  grid.innerHTML = portfolioB.slice().reverse().map((p,i) => {
+    const idx = portfolioB.length - 1 - i;
+    const conf = p.confidence || 0;
+    const ret = p.return_pct;
+    const retStr = ret !== undefined ? `<span class="${ret>=0?'green':'red'}">${ret>=0?'+':''}${ret.toFixed(1)}%</span>` : '';
+    return `<div class="pick-card" onclick="openPickModal(${idx})">
+      <div class="pick-card-top">
+        <div>
+          <div class="pick-ticker">${p.ticker}</div>
+          <div class="pick-date">${new Date(p.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+        </div>
+        <div style="text-align:right">
+          <span class="badge badge-${(p.action||'BUY').toLowerCase()}">${p.action||'BUY'}</span>
+          <div style="margin-top:6px">${retStr}</div>
+        </div>
+      </div>
+      <div class="pick-reasoning">${(p.reasoning||'').substring(0,160)}${(p.reasoning||'').length>160?'…':''}</div>
+      <div class="pick-risk">${(p.key_risk||'').substring(0,120)}</div>
+      <div class="conf-bar">
+        <div class="conf-track"><div class="conf-fill" style="width:${conf}%"></div></div>
+        <div class="conf-val">${conf}%</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function generatePickB() {
+  const btn = document.getElementById('gen-b-btn');
+  btn.disabled = true; btn.classList.add('loading');
+  btn.querySelector('.spinner').style.display = 'block';
+
+  try {
+    // Get latest batch data for context
+    const batch = await ghGetRaw(DATA_REPO, 'batch_0.json');
+    const intraday = await ghGetRaw(DATA_REPO, 'intraday.json');
+    
+    const contextStocks = batch ? (Array.isArray(batch) ? batch.slice(0,20) : [batch]) : [];
+    const contextStr = contextStocks.map(s => 
+      `${s.ticker||s.symbol}: score=${s.score||s.ai_score||'?'}, price=$${s.price||s.current_price||'?'}`
+    ).join('\n');
+
+    const systemPrompt = `You are Portfolio B — a rigorous stock pick AI for the PulseStock Study project.
+You use chain-of-thought reasoning before committing to a final recommendation.
+Your threshold is 80% confidence. If you cannot reach 80%, you must decline to pick.
+You always identify the single most important risk to the trade thesis.
+Always respond in valid JSON only, no markdown.`;
+
+    const userPrompt = `Today is ${new Date().toDateString()}.
+Recent stock analysis context from Portfolio A (Haiku):
+${contextStr || 'No context available'}
+
+Existing Portfolio B picks (for divergence awareness):
+${portfolioB.slice(-5).map(p=>`${p.ticker}: ${p.action} @ $${p.entry_price}`).join('\n') || 'None yet'}
+
+Using chain-of-thought reasoning, select ONE high-conviction stock pick.
+
+Respond ONLY with this JSON structure:
+{
+  "ticker": "SYMBOL",
+  "action": "BUY" or "SELL" or "HOLD",
+  "entry_price": number,
+  "target_price": number,
+  "stop_loss": number,
+  "confidence": number (0-100, must be ≥80 or decline),
+  "declined": false,
+  "decline_reason": null,
+  "chain_of_thought": "Full step-by-step reasoning process (300-500 words): consider macro environment, sector rotation, technical setup, fundamental catalyst, risk/reward ratio, then arrive at conviction level",
+  "reasoning": "Final concise thesis (100-150 words)",
+  "key_risk": "Single most important risk that could invalidate this trade (1-2 sentences)",
+  "timeframe": "short-term / medium-term / long-term",
+  "date": "${new Date().toISOString()}"
+}
+
+If confidence < 80, set declined=true, decline_reason="explanation", and null all other fields except date.`;
+
+    const raw = await callClaude(systemPrompt, userPrompt, 1500);
+    let pick;
+    try { pick = JSON.parse(raw.replace(/```json?|```/g,'')); }
+    catch(e) { throw new Error('Invalid JSON from AI'); }
+
+    if (pick.declined) {
+      showToast(`⚠ Sonnet declined to pick: ${pick.decline_reason}`);
+    } else {
+      pick.id = Date.now().toString();
+      portfolioB.push(pick);
+      await ghPut(STUDY_REPO, 'portfolio_b.json', portfolioB);
+      renderPortfolioB();
+      showToast(`✦ New pick: ${pick.ticker} — ${pick.confidence}% confidence`);
+    }
+  } catch(e) {
+    showToast('Error generating pick: ' + e.message);
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.classList.remove('loading');
+    btn.querySelector('.spinner').style.display = 'none';
+  }
+}
+
+/* ─── PICK MODAL ──────────────────────────────────── */
+function openPickModal(idx) {
+  const p = portfolioB[idx];
+  if (!p) return;
+  document.getElementById('m-ticker').textContent = p.ticker;
+  document.getElementById('m-date').textContent = new Date(p.date).toLocaleString();
+  document.getElementById('m-badges').innerHTML = `<span class="badge badge-${(p.action||'').toLowerCase()}">${p.action||''}</span> <span class="badge badge-${p.status||'open'}">${p.status||'open'}</span> ${p.timeframe?`<span class="badge" style="background:var(--surface2)">${p.timeframe}</span>`:''}`;
+  document.getElementById('m-cot').textContent = p.chain_of_thought || '—';
+  document.getElementById('m-reasoning').textContent = p.reasoning || '—';
+  document.getElementById('m-risk').textContent = p.key_risk || '—';
+  document.getElementById('m-entry').textContent = p.entry_price ? '$'+p.entry_price.toFixed(2) : '—';
+  document.getElementById('m-target').textContent = p.target_price ? '$'+p.target_price.toFixed(2) : '—';
+  document.getElementById('m-stop').textContent = p.stop_loss ? '$'+p.stop_loss.toFixed(2) : '—';
+  document.getElementById('m-conf-fill').style.width = (p.confidence||0)+'%';
+  document.getElementById('m-conf-val').textContent = (p.confidence||0)+'%';
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+/* ─── COMPARE VIEW ────────────────────────────────── */
+function renderCompare() {
+  const wrapA = document.getElementById('compare-a');
+  const wrapB = document.getElementById('compare-b');
+  const divWrap = document.getElementById('divergences-wrap');
+
+  // Find divergences: stocks in both portfolios with different signals
+  const aMap = {};
+  portfolioA.forEach(p => { 
+    const t = p.ticker||p.symbol; 
+    if(t) aMap[t] = p; 
+  });
+  
+  const divergences = portfolioB.filter(p => {
+    const a = aMap[p.ticker];
+    if (!a) return false;
+    const aAction = (a.action||a.signal||'').toUpperCase();
+    const bAction = (p.action||'').toUpperCase();
+    return aAction && bAction && aAction !== bAction;
+  });
+
+  divWrap.innerHTML = divergences.length ? divergences.map(p => {
+    const a = aMap[p.ticker];
+    const aAction = a.action||a.signal||'?';
+    const bAction = p.action||'?';
+    return `<div class="divergence-banner">
+      <div class="icon">⚡</div>
+      <div><strong>${p.ticker}</strong> — Divergence: Portfolio A says <span class="badge badge-${aAction.toLowerCase()}">${aAction}</span> · Portfolio B says <span class="badge badge-${bAction.toLowerCase()}">${bAction}</span> (${p.confidence}% conf)</div>
+    </div>`;
+  }).join('') : '';
+
+  // Portfolio A table (recent 20)
+  const aRecent = portfolioA.slice(-20).reverse();
+  wrapA.innerHTML = aRecent.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Ticker</th><th>Action</th><th>Return</th></tr></thead><tbody>${
+    aRecent.map(p => {
+      const ret = p.return_pct || p.returnPct;
+      const action = p.action||p.signal||'?';
+      return `<tr><td class="mono" style="font-weight:700">${p.ticker||p.symbol||'?'}</td><td><span class="badge badge-${(action).toLowerCase()}">${action}</span></td><td>${ret!==undefined?`<span class="${ret>=0?'green':'red'}">${ret>=0?'+':''}${parseFloat(ret).toFixed(1)}%</span>`:'—'}</td></tr>`;
+    }).join('')
+  }</tbody></table></div>` : '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No A picks loaded</div></div>';
+
+  // Portfolio B table
+  const bRecent = portfolioB.slice().reverse();
+  wrapB.innerHTML = bRecent.length ? `<div style="overflow-x:auto"><table><thead><tr><th>Ticker</th><th>Action</th><th>Conf</th><th>Return</th></tr></thead><tbody>${
+    bRecent.map(p => {
+      const ret = p.return_pct;
+      return `<tr><td class="mono" style="font-weight:700">${p.ticker}</td><td><span class="badge badge-${(p.action||'').toLowerCase()}">${p.action||'?'}</span></td><td style="color:var(--accent-b)">${p.confidence||0}%</td><td>${ret!==undefined?`<span class="${ret>=0?'green':'red'}">${ret>=0?'+':''}${ret.toFixed(1)}%</span>`:'—'}</td></tr>`;
+    }).join('')
+  }</tbody></table></div>` : '<div class="empty-state"><div class="empty-icon">🧪</div><div class="empty-title">No B picks yet</div></div>';
+}
+
+/* ─── CRITIC AI ───────────────────────────────────── */
+let critiques = [];
+let clusters = [];
+
+async function loadCritic() {
+  critiques = await ghGetRaw(STUDY_REPO, 'critiques.json') || [];
+  clusters = await ghGetRaw(STUDY_REPO, 'mistake_clusters.json') || [];
+  renderCritiques();
+  renderClusters();
+}
+
+function renderCritiques() {
+  const wrap = document.getElementById('critiques-wrap');
+  document.getElementById('badge-critic').textContent = critiques.length;
+  if (!critiques.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No postmortems yet</div><div class="empty-desc">Run Critic to analyze closed trades</div></div>`;
+    return;
+  }
+  wrap.innerHTML = critiques.slice().reverse().map(c => `
+    <div class="critique-card">
+      <div class="critique-header">
+        <div>
+          <div class="critique-ticker">${c.ticker}</div>
+          <div style="font-size:11px;color:var(--muted)">${new Date(c.date).toLocaleDateString()}</div>
+        </div>
+        <div class="critique-verdict">
+          <span class="badge ${c.outcome==='win'?'badge-win':'badge-loss'}">${c.outcome||'?'}</span>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${c.portfolio||''}</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--label);line-height:1.7;margin-bottom:10px">${c.postmortem||''}</div>
+      <div style="font-size:11px;color:var(--muted)"><strong style="color:var(--warn)">Lesson:</strong> ${c.lesson||''}</div>
+    </div>
+  `).join('');
+}
+
+function renderClusters() {
+  const wrap = document.getElementById('clusters-wrap');
+  if (!clusters.length) {
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-title">No clusters yet</div><div class="empty-desc">Run analysis after 10+ closed trades</div></div>`;
+    return;
+  }
+  wrap.innerHTML = clusters.map(c => `
+    <div class="mistake-cluster">
+      <div class="cluster-label">${c.pattern||'Pattern'} <span style="font-weight:400;color:var(--muted)">(${c.frequency||0}x)</span></div>
+      <div class="cluster-desc">${c.description||''}</div>
+      ${c.recommendation ? `<div style="font-size:11px;color:var(--accent-c);margin-top:8px">→ ${c.recommendation}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+async function runCritic() {
+  const btn = document.getElementById('critic-btn');
+  btn.disabled=true; btn.classList.add('loading');
+
+  try {
+    // Get closed trades from both portfolios
+    const closedA = portfolioA.filter(p => p.status==='closed' || p.return_pct!==undefined).slice(-10);
+    const closedB = portfolioB.filter(p => p.return_pct!==undefined || p.status==='closed');
+
+    if (!closedA.length && !closedB.length) {
+      showToast('No closed trades to critique yet'); return;
+    }
+
+    const systemPrompt = `You are the Critic AI for PulseStock Study. Your job is to write honest, detailed postmortems on closed trades and identify what the AI did right or wrong. Be direct and specific. Always respond in valid JSON only.`;
+
+    const allClosed = [
+      ...closedA.map(p => ({...p, portfolio:'A (Haiku)'})),
+      ...closedB.map(p => ({...p, portfolio:'B (Sonnet)'}))
+    ];
+
+    const userPrompt = `Write postmortems for these closed trades:
+${JSON.stringify(allClosed.slice(0,10), null, 2)}
+
+Respond with a JSON array of postmortem objects (one per trade):
+[{
+  "ticker": "SYMBOL",
+  "portfolio": "A (Haiku) or B (Sonnet)",
+  "outcome": "win" or "loss",
+  "date": "ISO date",
+  "postmortem": "2-3 sentences analyzing what led to this outcome",
+  "lesson": "One concrete takeaway for the AI to improve"
+}]`;
+
+    const raw = await callClaude(systemPrompt, userPrompt, 2000);
+    let newCritiques;
+    try { newCritiques = JSON.parse(raw.replace(/```json?|```/g,'')); }
+    catch(e) { throw new Error('Invalid JSON from Critic AI'); }
+
+    if (!Array.isArray(newCritiques)) throw new Error('Expected array from Critic');
+    
+    // Merge (avoid dupes by ticker+portfolio)
+    const existing = new Set(critiques.map(c => c.ticker+'|'+c.portfolio));
+    const fresh = newCritiques.filter(c => !existing.has(c.ticker+'|'+c.portfolio));
+    critiques.push(...fresh);
+    await ghPut(STUDY_REPO, 'critiques.json', critiques);
+    renderCritiques();
+    showToast(`✦ ${fresh.length} postmortems written`);
+  } catch(e) {
+    showToast('Critic error: '+e.message);
+  } finally {
+    btn.disabled=false; btn.classList.remove('loading');
+  }
+}
+
+async function runClustering() {
+  const totalClosed = [
+    ...portfolioA.filter(p => p.status==='closed'||p.return_pct!==undefined),
+    ...portfolioB.filter(p => p.return_pct!==undefined)
+  ];
+
+  if (totalClosed.length < 10) {
+    showToast(`Need 10+ closed trades. Currently: ${totalClosed.length}`); return;
+  }
+
+  const btn = document.getElementById('cluster-btn');
+  btn.disabled=true; btn.classList.add('loading');
+
+  try {
+    const systemPrompt = `You are a trading pattern analyst. Analyze a set of trade postmortems and critique records to find recurring mistake patterns. Respond in valid JSON only.`;
+    const userPrompt = `Given these postmortems and trade records, identify 3-5 recurring mistake patterns:
+
+Postmortems: ${JSON.stringify(critiques.slice(-20))}
+Recent picks A: ${JSON.stringify(portfolioA.slice(-20))}
+Recent picks B: ${JSON.stringify(portfolioB.slice(-20))}
+
+Respond with a JSON array:
+[{
+  "pattern": "Short name for this pattern (e.g. 'FOMO entries', 'Ignoring sector risk')",
+  "frequency": number of times observed,
+  "description": "2-3 sentences describing the mistake pattern",
+  "recommendation": "One specific rule change to address this"
+}]`;
+
+    const raw = await callClaude(systemPrompt, userPrompt, 1500);
+    let newClusters;
+    try { newClusters = JSON.parse(raw.replace(/```json?|```/g,'')); }
+    catch(e) { throw new Error('Invalid JSON from cluster AI'); }
+
+    clusters = Array.isArray(newClusters) ? newClusters : [];
+    await ghPut(STUDY_REPO, 'mistake_clusters.json', clusters);
+    renderClusters();
+    showToast(`✦ ${clusters.length} mistake patterns identified`);
+  } catch(e) {
+    showToast('Cluster error: '+e.message);
+  } finally {
+    btn.disabled=false; btn.classList.remove('loading');
+  }
+}
+
+/* ─── TOAST ───────────────────────────────────────── */
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+/* ─── CLOCK ───────────────────────────────────────── */
+function updateClock() {
+  const el = document.getElementById('live-time');
+  if (el) el.textContent = new Date().toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
+}
+
+/* ─── INIT ────────────────────────────────────────── */
+async function initApp() {
+  updateClock(); setInterval(updateClock, 30000);
+  await Promise.all([loadPortfolioA(), loadPortfolioB(), loadCritic()]);
+}
+</script>
+</body>
+</html>
