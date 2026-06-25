@@ -773,7 +773,13 @@ function checkGate() {
   if (document.getElementById('gate-input').value.trim() === 'pulsestock2026') {
     document.getElementById('gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
-    initApp();
+    try {
+      initApp().catch(function(e) {
+        alert('initApp error: ' + e.message + '\n' + e.stack);
+      });
+    } catch(e) {
+      alert('initApp crash: ' + e.message + '\n' + e.stack);
+    }
   } else {
     document.getElementById('gate-error').textContent = 'Incorrect access code.';
     document.getElementById('gate-input').value = '';
