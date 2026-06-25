@@ -276,6 +276,13 @@ tbody td{padding:9px 12px;color:var(--text);}
 
 /* ══ LIVE MONITOR ══════════════════════════════════ */
 const FINNHUB = 'd8fhh6hr01qn443a0bngd8fhh6hr01qn443a0bo0';
+function pnlSpan(val) {
+  if (val === null || val === undefined || isNaN(val)) return '—';
+  const v = parseFloat(val);
+  const c = v >= 0 ? 'var(--green)' : 'var(--red)';
+  return '<span style="color:' + c + ';font-family:DM Mono,monospace;font-weight:600">' + (v>=0?'+':'') + v.toFixed(1) + '%</span>';
+}
+
 let monitorData = { core:[], swing:[], bOpen:[] };
 let priceCache = {};
 
@@ -1361,6 +1368,13 @@ const DATA_REPO  = 'mscharbo-commits/pulsestock-data';
 
 /* ── FINNHUB + TECHNICAL ENGINE ── */
 const FINNHUB = 'd8fhh6hr01qn443a0bngd8fhh6hr01qn443a0bo0';
+function pnlSpan(val) {
+  if (val === null || val === undefined || isNaN(val)) return '—';
+  const v = parseFloat(val);
+  const c = v >= 0 ? 'var(--green)' : 'var(--red)';
+  return '<span style="color:' + c + ';font-family:DM Mono,monospace;font-weight:600">' + (v>=0?'+':'') + v.toFixed(1) + '%</span>';
+}
+
 
 async function fh(endpoint) {
   const r = await fetch(`https://finnhub.io/api/v1/${endpoint}&token=${FINNHUB}`);
@@ -1740,13 +1754,13 @@ function renderCompare() {
     portfolioA.slice(-25).reverse().map(p=>{
       const act=p.action||p.signal||'?';
       const ret=parseFloat(p.return_pct??p.returnPct??NaN);
-      return `<tr><td class="td-sym">${p.ticker||p.symbol||'?'}</td><td><span class="badge badge-${act.toUpperCase()}">${act}</span></td><td>${!isNaN(ret)?`<span style="color:${ret>=0?'var(--green)':'var(--red)'};font-family:'DM Mono',monospace;font-weight:600">${ret>=0?'+':''}${ret.toFixed(1)}%</span>`:'—'}</td></tr>`;
+      return `<tr><td class="td-sym">${p.ticker||p.symbol||'?'}</td><td><span class="badge badge-${act.toUpperCase()}">${act}</span></td><td>${!isNaN(ret) ? pnlSpan(ret) : '—'}</td></tr>`;
     }).join(''),['Ticker','Action','Return']
   );
   document.getElementById('compare-b').innerHTML=tbl(
     realB.slice().reverse().map(p=>{
       const ret=p.return_pct;
-      return `<tr><td class="td-sym">${p.ticker}</td><td><span class="badge badge-${(p.action||'').toUpperCase()}">${p.action||'?'}</span></td><td style="color:var(--purple);font-family:'DM Mono',monospace">${p.confidence||0}%</td><td>${ret!==undefined?`<span style="color:${ret>=0?'var(--green)':'var(--red)'};font-family:'DM Mono',monospace;font-weight:600">${ret>=0?'+':''}${ret.toFixed(1)}%</span>`:'—'}</td></tr>`;
+      return `<tr><td class="td-sym">${p.ticker}</td><td><span class="badge badge-${(p.action||'').toUpperCase()}">${p.action||'?'}</span></td><td style="color:var(--purple);font-family:'DM Mono',monospace">${p.confidence||0}%</td><td>${ret !== undefined ? pnlSpan(ret) : '—'}</td></tr>`;
     }).join(''),['Ticker','Action','Conf','Return']
   );
 }
@@ -1988,6 +2002,13 @@ async function runCounterfactual() {
 
 /* ══ LIVE MONITOR ══════════════════════════════════ */
 const FINNHUB = 'd8fhh6hr01qn443a0bngd8fhh6hr01qn443a0bo0';
+function pnlSpan(val) {
+  if (val === null || val === undefined || isNaN(val)) return '—';
+  const v = parseFloat(val);
+  const c = v >= 0 ? 'var(--green)' : 'var(--red)';
+  return '<span style="color:' + c + ';font-family:DM Mono,monospace;font-weight:600">' + (v>=0?'+':'') + v.toFixed(1) + '%</span>';
+}
+
 let monitorData = { core:[], swing:[], bOpen:[] };
 let priceCache = {};
 
