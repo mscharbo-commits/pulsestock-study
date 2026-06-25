@@ -650,20 +650,52 @@ let calibrationLog=[], tradeJournal=[];
 async function loadPortfolioA() {
   try {
     let picks=[];
-    const [core,swing] = await Promise.all([
-      ghRaw(DATA_REPO,'core_portfolio.json'),
-      ghRaw(DATA_REPO,'swing_portfolio.json')
-    ]);
-    if(core) picks.push(...(Array.isArray(core)?core:[core]));
-    if(swing) picks.push(...(Array.isArray(swing)?swing:[swing]));
-    for(let i=0;i<=4;i++){
+
+    // Load today's batch files (picks are nested under .picks[])
+    for(let i=0;i<=99;i++){
       const b=await ghRaw(DATA_REPO,`batch_${i}.json`);
-      if(b&&Array.isArray(b)) picks.push(...b);
+      if(!b) continue;
+      const bPicks=Array.isArray(b)?b:(b.picks||[]);
+      bPicks.forEach(p=>{ if(p.sym||p.ticker) picks.push(p); });
     }
-    portfolioA=picks.slice(0,300);
+
+    // Load core portfolio trades (under trades_log.json .trades[])
+    const tlog=await ghRaw(DATA_REPO,'trades_log.json');
+    if(tlog){
+      const trades=tlog.trades||[];
+      trades.forEach(t=>{ if(t.sym||t.ticker) picks.push({...t,_source:'trades_log'}); });
+    }
+
+    // Normalize all picks to consistent field names
+    picks=picks.map(p=>({
+      ticker: p.sym||p.ticker||p.symbol||'?',
+      name: p.name||'',
+      sector: p.sector||'',
+      action: (p.rating||p.action||p.signal||'WATCH').toUpperCase(),
+      entry_price: p.entryPrice||p.priceAtPick||p.price||null,
+      target_price: p.targetPrice||p.target||null,
+      stop_loss: p.stopPrice||p.stop_loss||null,
+      confidence: p.confidence||null,
+      reason: p.reason||p.reasoning||'',
+      status: p.status||'open',
+      return_pct: p.return_pct||p.pnlPct||p.returnPct||undefined,
+      date: p.entryDate||p.date||p.timestamp||null,
+      _source: p._source||'batch'
+    }));
+
+    // Dedupe by ticker+date
+    const seen=new Set();
+    picks=picks.filter(p=>{
+      const key=p.ticker+'|'+(p.date?new Date(p.date).toDateString():'');
+      if(seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+
+    portfolioA=picks;
     renderPortfolioA();
   } catch(e){
-    document.getElementById('a-loading').innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load Portfolio A</div><div class="empty-sub">Check pulsestock-data repo</div></div>';
+    console.error(e);
+    document.getElementById('a-loading').innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load Portfolio A</div><div class="empty-sub">'+e.message+'</div></div>';
   }
 }
 
@@ -674,7 +706,7 @@ function renderPortfolioA() {
   if(!portfolioA.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text3)">No picks found in pulsestock-data</td></tr>';return;}
   let wins=0,totalRet=0,closed=0,open=0;
   tbody.innerHTML=portfolioA.map(p=>{
-    const ret=parseFloat(p.return_pct??p.returnPct??p.pnl_pct??NaN);
+    const ret=parseFloat(p.return_pct??p.pnlPct??p.returnPct??p.pnl_pct??NaN);
     const hasRet=!isNaN(ret);
     const status=p.status||(hasRet?'closed':'open');
     if(status==='open') open++; else{closed++;if(hasRet){totalRet+=ret;if(ret>0)wins++;}}
@@ -762,7 +794,9 @@ async function generatePickB() {
       Promise.resolve(regimeLog.current_regime),
       Promise.resolve(strategyMemory.rules||[])
     ]);
-    const stocks=batch0?Array.isArray(batch0)?batch0.slice(0,15):[]:[],
+    // batch_0 has picks nested under .picks[]
+    const batchPicks=batch0?(batch0.picks||[]).slice(0,15):[];
+    const stocks=batchPicks,
       rulesStr=rules.length?'LEARNED RULES:\n'+rules.map(r=>`- ${r}`).join('\n'):'No rules yet.',
       regimeStr=regime?`REGIME: ${regime.label} — ${regime.description}. Guidance: ${regime.guidance}`:'Regime: undetected.';
 
@@ -770,9 +804,9 @@ async function generatePickB() {
     const usr=`Today: ${new Date().toDateString()}
 ${regimeStr}
 ${rulesStr}
-Recent A picks: ${recentA.map(p=>`${p.ticker||p.symbol}:${p.action||p.signal||'?'}`).join(',')||'none'}
+Recent A picks: ${recentA.map(p=>`${p.ticker}:${p.action}@conf=${p.confidence||'?'}`).join(',')||'none'}
 Recent B picks: ${recentB.map(p=>`${p.ticker}:${p.action}@$${p.entry_price}`).join(',')||'none'}
-Stock scan: ${stocks.map(s=>`${s.ticker||s.symbol}:score=${s.score||s.ai_score||'?'}`).join(',')||'none'}
+Stock scan (Haiku scored): ${stocks.map(s=>`${s.sym||s.ticker}=${s.rating||'?'}@${s.confidence||'?'}%conf`).join(',')||'none'}
 
 Respond with EXACTLY this JSON:
 {"ticker":"SYMBOL","action":"BUY|SELL|HOLD","entry_price":number,"target_price":number,"stop_loss":number,"timeframe":"short-term|medium-term|long-term","confidence":number,"declined":false,"decline_reason":null,"chain_of_thought":"Step-by-step: macro → sector → technical → fundamental → risk/reward → conviction. 400-600 words.","adversarial_response":"3-4 strongest objections to this thesis.","reasoning":"Final thesis after surviving adversarial critique. 100-150 words.","key_risk":"Single most important risk. 1-2 sentences.","regime_context":"${regime?regime.label:'unknown'}","rules_applied":[],"date":"${new Date().toISOString()}"}
