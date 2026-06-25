@@ -576,6 +576,308 @@ For each, respond:
   }
 }
 
+
+/* ══ DAILY UPDATES ════════════════════════════════ */
+let dailyUpdates = [];
+
+async function loadDailyUpdates() {
+  dailyUpdates = await ghRaw(STUDY_REPO, 'daily_updates.json') || [];
+  renderDailyHistory();
+  document.getElementById('badge-daily').textContent = dailyUpdates.length;
+  if (dailyUpdates.length) {
+    const today = new Date().toDateString();
+    const todayRun = dailyUpdates.find(d => new Date(d.date).toDateString() === today);
+    if (todayRun) renderTodayUpdate(todayRun);
+    document.getElementById('du-last-run').textContent = dailyUpdates.length
+      ? 'Last run: ' + new Date(dailyUpdates[0].date).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
+      : '';
+  }
+}
+
+async function runDailyUpdates() {
+  const btn = document.getElementById('du-run-btn');
+  btn.disabled = true; btn.classList.add('loading');
+  showToast('Running daily updates… this takes 2-3 min');
+
+  try {
+    // Load all open positions
+    const [coreData, swingData] = await Promise.all([
+      ghRaw(DATA_REPO, 'core_portfolio.json'),
+      ghRaw(DATA_REPO, 'swing_portfolio.json')
+    ]);
+    const corePositions  = (coreData?.trades  || []).filter(t => t.status === 'open').map(t => ({...t, portfolio:'Core (A)'}));
+    const swingPositions = (swingData?.trades  || []).filter(t => t.status === 'open').map(t => ({...t, portfolio:'Swing (A)'}));
+    const bPositions     = (portfolioB || []).filter(p => !p.declined && (!p.status || p.status === 'open')).map(p => ({
+      sym: p.ticker, name: p.ticker, entryPrice: p.entry_price,
+      targetPrice: p.target_price, stopPrice: p.stop_loss,
+      confidence: p.confidence, reason: p.reasoning,
+      entryDate: p.date, portfolio: 'Sonnet (B)'
+    }));
+
+    const allPositions = [...corePositions, ...swingPositions, ...bPositions];
+    if (!allPositions.length) { showToast('No open positions to update'); return; }
+
+    showToast(`Analyzing ${allPositions.length} positions…`);
+
+    // Load market context for today
+    const macroCtx = await ghRaw(DATA_REPO, 'market_context.json');
+    const spyTech = await analyzeSymbol('SPY');
+
+    const updates = [];
+
+    // Process in batches of 3 to avoid rate limits
+    for (let i = 0; i < allPositions.length; i++) {
+      const pos = allPositions[i];
+      const sym = pos.sym || pos.ticker;
+      if (!sym) continue;
+
+      showToast(`Analyzing ${sym} (${i+1}/${allPositions.length})…`);
+
+      // Fetch live data
+      const [tech, news, quote] = await Promise.all([
+        analyzeSymbol(sym),
+        fh(`company-news?symbol=${sym}&from=${new Date(Date.now()-2*86400000).toISOString().split('T')[0]}&to=${new Date().toISOString().split('T')[0]}`),
+        fh(`quote?symbol=${sym}`)
+      ]);
+
+      const price   = quote?.c || tech?.price || pos.entryPrice;
+      const pnlPct  = pos.entryPrice ? ((price - pos.entryPrice) / pos.entryPrice * 100) : 0;
+      const daysIn  = pos.entryDate ? Math.floor((Date.now() - new Date(pos.entryDate)) / 86400000) : 0;
+      const stopDist = pos.stopPrice ? ((price - pos.stopPrice) / pos.stopPrice * 100) : null;
+      const targDist = pos.targetPrice ? ((pos.targetPrice - price) / price * 100) : null;
+
+      // Recent news headlines
+      const recentNews = (news || []).slice(0, 4).map(n => ({
+        headline: n.headline,
+        source: n.source,
+        url: n.url
+      }));
+
+      // Build technical summary
+      const techSummary = tech ? {
+        rsi: tech.rsi,
+        trend: tech.trend,
+        aboveSMA50: tech.aboveSMA50,
+        aboveSMA200: tech.aboveSMA200,
+        macdBullish: parseFloat(tech.macd||0) > 0,
+        volume: tech.volume,
+        dayChange: tech.dayChange,
+        score: tech.score
+      } : null;
+
+      // AI daily assessment
+      const assessment = await ai(
+        `You are a daily position review analyst. For each open trade, assess whether the thesis is still intact based on today's price action, technicals, and news. Be direct and specific. Respond ONLY in valid JSON.`,
+        `Position Review: ${sym} (${pos.portfolio})
+
+TRADE DETAILS:
+- Entry: $${pos.entryPrice?.toFixed(2)} on ${pos.entryDate ? new Date(pos.entryDate).toLocaleDateString() : 'unknown'}
+- Current: $${price?.toFixed(2)} (${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%)
+- Target: $${pos.targetPrice?.toFixed(2)||'none'} (${targDist!==null?(targDist>=0?'+':'')+targDist.toFixed(1)+'% away':'—'})
+- Stop: $${pos.stopPrice?.toFixed(2)||'none'} (${stopDist!==null?stopDist.toFixed(1)+'% cushion':'—'})
+- Days held: ${daysIn}
+- Original thesis: ${pos.reason || 'not recorded'}
+
+TODAY'S TECHNICALS:
+- RSI(14): ${tech?.rsi||'—'} ${parseFloat(tech?.rsi||50)>70?'⚠ OVERBOUGHT':parseFloat(tech?.rsi||50)<30?'⚠ OVERSOLD':''}
+- Trend: ${tech?.trend||'—'}
+- vs SMA50: ${tech?.aboveSMA50?'Above ✓':'Below ✗'}
+- vs SMA200: ${tech?.aboveSMA200?'Above ✓':'Below ✗'}
+- MACD: ${parseFloat(tech?.macd||0)>0?'Bullish ✓':'Bearish ✗'}
+- Volume: ${tech?.volume||'—'}
+- Today's move: ${tech?.dayChange>=0?'+':''}${tech?.dayChange||0}%
+
+MARKET CONTEXT:
+- SPY today: ${spyTech?.dayChange>=0?'+':''}${spyTech?.dayChange||0}% · trend: ${spyTech?.trend}
+- Risk environment: ${macroCtx?.macro?.riskOn?'Risk On':'Risk Off'}
+
+RECENT NEWS (last 48h):
+${recentNews.map(n=>n.headline).join('\n') || 'No recent news'}
+
+Respond with JSON:
+{
+  "verdict": "HOLD" | "WATCH" | "EXIT",
+  "thesis_intact": true | false,
+  "confidence_change": "increasing" | "decreasing" | "stable",
+  "technical_assessment": "What is the chart saying today? 2-3 sentences specific to price levels and indicators.",
+  "thesis_check": "Is the original thesis still playing out? What has changed or confirmed? 2-3 sentences.",
+  "news_impact": "How does recent news affect the trade? 1-2 sentences. If no news, say so.",
+  "news_sentiment": "positive" | "negative" | "neutral" | "none",
+  "watch_level": "If WATCH or EXIT: specific price to watch. If HOLD: what would change your mind.",
+  "action_detail": "Specific, actionable instruction for today. What exactly should the trader do or monitor?",
+  "days_remaining": "Based on thesis, how many more days does this trade need?",
+  "risk_flag": null | "string describing new or elevated risk discovered today"
+}`,
+        900
+      );
+
+      let assess;
+      try { assess = parseJSON(assessment); }
+      catch(e) { assess = { verdict:'WATCH', thesis_intact:true, technical_assessment:'Parse error', action_detail:'Check manually', news_sentiment:'neutral' }; }
+
+      updates.push({
+        sym, portfolio: pos.portfolio,
+        entry: pos.entryPrice, current: price,
+        pnlPct: parseFloat(pnlPct.toFixed(2)),
+        daysIn, stopDist: stopDist?.toFixed(1),
+        targDist: targDist?.toFixed(1),
+        tech: techSummary,
+        news: recentNews,
+        ...assess
+      });
+
+      // Small delay between positions
+      await new Promise(r => setTimeout(r, 400));
+    }
+
+    // Sort: EXIT first, then WATCH, then HOLD
+    updates.sort((a,b) => {
+      const order = {EXIT:0, WATCH:1, HOLD:2};
+      return (order[a.verdict]||2) - (order[b.verdict]||2);
+    });
+
+    // Build today's update record
+    const todayRecord = {
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      positions_reviewed: updates.length,
+      holds: updates.filter(u=>u.verdict==='HOLD').length,
+      watches: updates.filter(u=>u.verdict==='WATCH').length,
+      exits: updates.filter(u=>u.verdict==='EXIT').length,
+      thesis_intact: updates.filter(u=>u.thesis_intact).length,
+      market_context: { spyChange: spyTech?.dayChange, spyTrend: spyTech?.trend, riskOn: macroCtx?.macro?.riskOn },
+      updates
+    };
+
+    // Prepend to history
+    dailyUpdates.unshift(todayRecord);
+    await ghPut(STUDY_REPO, 'daily_updates.json', dailyUpdates);
+
+    renderTodayUpdate(todayRecord);
+    renderDailyHistory();
+    document.getElementById('badge-daily').textContent = dailyUpdates.length;
+    document.getElementById('du-last-run').textContent = 'Updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    showToast(`✦ Daily update complete — ${updates.filter(u=>u.verdict==='EXIT').length} exits, ${updates.filter(u=>u.verdict==='WATCH').length} watches`);
+
+  } catch(e) {
+    showToast('Daily update error: ' + e.message);
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.classList.remove('loading');
+  }
+}
+
+function renderTodayUpdate(record) {
+  document.getElementById('du-today-wrap').style.display = 'block';
+  document.getElementById('du-today-label').textContent = 'Update — ' + new Date(record.date).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+
+  // Summary stats
+  document.getElementById('du-positions').textContent = record.positions_reviewed || 0;
+  document.getElementById('du-hold').textContent = record.holds || 0;
+  document.getElementById('du-watch').textContent = record.watches || 0;
+  document.getElementById('du-exit').textContent = record.exits || 0;
+  const intactEl = document.getElementById('du-thesis-intact');
+  intactEl.textContent = record.thesis_intact || 0;
+  intactEl.className = 'sum-num ' + ((record.thesis_intact||0) >= (record.positions_reviewed||1)*0.6 ? 'num-green' : 'num-red');
+
+  // Exit alerts at top
+  const exits = (record.updates||[]).filter(u => u.verdict === 'EXIT');
+  document.getElementById('du-exit-alerts').innerHTML = exits.map(u => `
+    <div class="du-exit-alert">
+      <div style="font-size:20px">🚨</div>
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px">${u.sym} (${u.portfolio}) — EXIT SIGNAL</div>
+        <div style="font-size:12px;color:var(--red)">${u.action_detail}</div>
+        ${u.watch_level?`<div style="font-size:11px;color:var(--text2);margin-top:4px">Watch level: ${u.watch_level}</div>`:''}
+      </div>
+      <div style="margin-left:auto;text-align:right;flex-shrink:0">
+        <div style="font-size:15px;font-weight:700;font-family:'DM Mono',monospace;color:${u.pnlPct>=0?'var(--green)':'var(--red)'}">${u.pnlPct>=0?'+':''}${u.pnlPct}%</div>
+        <div style="font-size:11px;color:var(--text3)">${u.daysIn} days in</div>
+      </div>
+    </div>`).join('');
+
+  // All position updates
+  document.getElementById('du-updates-grid').innerHTML = (record.updates||[]).map(u => {
+    const verdictClass = u.verdict==='HOLD'?'hold':u.verdict==='WATCH'?'watch':'exit';
+    const pnlColor = u.pnlPct>=0?'var(--green)':'var(--red)';
+    const techScore = u.tech?.score||50;
+
+    return `<div class="du-card">
+      <div class="du-card-head ${verdictClass}">
+        <div>
+          <div class="du-sym">${u.sym} <span style="font-size:11px;font-weight:500;color:var(--text3)">${u.portfolio}</span></div>
+          <div class="du-meta">${u.daysIn} days in · ${u.thesis_intact?'✓ Thesis intact':'⚠ Thesis weakening'} · Conf ${u.confidence_change||'stable'}</div>
+        </div>
+        <div class="du-verdict">
+          <span class="verdict-${verdictClass}">${u.verdict==='HOLD'?'✓ HOLD':u.verdict==='WATCH'?'⚠ WATCH':'🚨 EXIT'}</span>
+          <span style="font-size:14px;font-weight:700;font-family:'DM Mono',monospace;color:${pnlColor}">${u.pnlPct>=0?'+':''}${u.pnlPct}%</span>
+        </div>
+      </div>
+      <div class="du-body">
+        <div class="du-price-row">
+          <div class="du-price-cell"><div class="du-price-label">Entry</div><div class="du-price-val">$${u.entry?.toFixed(2)||'—'}</div></div>
+          <div class="du-price-cell"><div class="du-price-label">Current</div><div class="du-price-val" style="color:${pnlColor}">$${u.current?.toFixed(2)||'—'}</div></div>
+          <div class="du-price-cell"><div class="du-price-label">vs Stop</div><div class="du-price-val" style="color:${parseFloat(u.stopDist||100)<15?'var(--red)':'var(--text3)'}">${u.stopDist!==null?u.stopDist+'%':'—'}</div></div>
+          <div class="du-price-cell"><div class="du-price-label">to Target</div><div class="du-price-val" style="color:var(--green)">${u.targDist!==null?u.targDist+'%':'—'}</div></div>
+        </div>
+
+        <!-- Technicals strip -->
+        <div class="du-tech-strip">
+          <span class="du-tech-pill ${u.tech?.aboveSMA50?'good':'bad'}">SMA50 ${u.tech?.aboveSMA50?'↑':'↓'}</span>
+          <span class="du-tech-pill ${u.tech?.aboveSMA200?'good':'bad'}">SMA200 ${u.tech?.aboveSMA200?'↑':'↓'}</span>
+          <span class="du-tech-pill ${u.tech?.macdBullish?'good':'bad'}">MACD ${u.tech?.macdBullish?'▲':'▼'}</span>
+          <span class="du-tech-pill ${parseFloat(u.tech?.rsi||50)<70&&parseFloat(u.tech?.rsi||50)>30?'good':'bad'}">RSI ${u.tech?.rsi||'—'}</span>
+          <span class="du-tech-pill ${u.tech?.volume==='high'?'good':'neutral'}">Vol ${u.tech?.volume||'—'}</span>
+          <span class="du-tech-pill neutral">Score ${techScore}/100</span>
+        </div>
+
+        <div class="du-section">
+          <div class="du-section-title">📈 Technical Assessment</div>
+          <div class="du-section-body">${u.technical_assessment||'—'}</div>
+        </div>
+
+        <div class="du-section">
+          <div class="du-section-title">🎯 Thesis Check</div>
+          <div class="du-section-body">${u.thesis_check||'—'}</div>
+        </div>
+
+        ${u.news && u.news.length ? `
+        <div class="du-section">
+          <div class="du-section-title">📰 News (48h) — ${u.news_sentiment==='positive'?'<span style="color:var(--green)">Positive</span>':u.news_sentiment==='negative'?'<span style="color:var(--red)">Negative</span>':'Neutral'}</div>
+          ${u.news.map(n=>`<div class="du-news-item"><span class="du-news-sentiment ${u.news_sentiment==='positive'?'sent-pos':u.news_sentiment==='negative'?'sent-neg':'sent-neu'}">${u.news_sentiment?.toUpperCase()||'NEU'}</span>${n.headline}</div>`).join('')}
+        </div>` : ''}
+
+        <div class="du-section">
+          <div class="du-section-title">⚡ Action Today</div>
+          <div class="du-section-body" style="font-weight:600;color:var(--text)">${u.action_detail||'—'}</div>
+        </div>
+
+        ${u.watch_level?`<div class="du-watch-level">👁 Watch: ${u.watch_level}</div>`:''}
+        ${u.risk_flag?`<div style="font-size:12px;color:var(--red);margin-top:8px;background:var(--red-bg);border-radius:6px;padding:7px 10px">⚠ New Risk: ${u.risk_flag}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderDailyHistory() {
+  const el = document.getElementById('du-history-list');
+  if (!dailyUpdates.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No daily updates yet</div><div class="empty-sub">Run your first daily update above</div></div>';
+    return;
+  }
+  el.innerHTML = dailyUpdates.map((d,i) => `
+    <div class="du-history-day" onclick="renderTodayUpdate(dailyUpdates[${i}])">
+      <div class="du-history-date">${new Date(d.date).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
+      <div class="du-history-summary">${d.positions_reviewed} positions · SPY ${d.market_context?.spyChange>=0?'+':''}${d.market_context?.spyChange||0}% · ${d.market_context?.riskOn?'Risk On':'Risk Off'}</div>
+      <div class="du-history-pills">
+        ${d.holds?`<span class="badge" style="background:var(--green-bg);color:var(--green)">✓ ${d.holds} Hold</span>`:''}
+        ${d.watches?`<span class="badge" style="background:var(--amber-bg);color:var(--amber)">⚠ ${d.watches} Watch</span>`:''}
+        ${d.exits?`<span class="badge" style="background:var(--red-bg);color:var(--red)">🚨 ${d.exits} Exit</span>`:''}
+        <span class="badge" style="background:#F1F5F9;color:var(--text3)">${d.thesis_intact}/${d.positions_reviewed} thesis intact</span>
+      </div>
+    </div>`).join('');
+}
+
 /* ── TOAST ── */
 #toast{position:fixed;bottom:24px;right:24px;background:var(--text);
   color:#fff;border-radius:8px;padding:12px 18px;font-size:13px;font-weight:500;
@@ -587,6 +889,52 @@ For each, respond:
 .info-box{background:var(--accent-light);border:1px solid #C3D9FC;border-radius:8px;
   padding:12px 16px;font-size:12px;color:var(--accent);margin-bottom:14px;line-height:1.6;}
 
+
+
+/* ── DAILY UPDATES ── */
+.du-card {
+  background:#fff; border:1px solid var(--border); border-radius:10px;
+  box-shadow:var(--shadow); margin-bottom:10px; overflow:hidden;
+}
+.du-card-head {
+  padding:12px 16px; display:flex; align-items:center; justify-content:space-between;
+  border-bottom:1px solid var(--border);
+}
+.du-card-head.hold { background:#F0FDF8; border-left:4px solid var(--green); }
+.du-card-head.watch { background:#FFFBEB; border-left:4px solid var(--amber); }
+.du-card-head.exit { background:#FEF2F2; border-left:4px solid var(--red); }
+.du-sym { font-size:16px; font-weight:800; font-family:"DM Mono",monospace; }
+.du-meta { font-size:11px; color:var(--text3); margin-top:2px; }
+.du-verdict { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+.verdict-hold { font-size:12px; font-weight:700; color:var(--green); }
+.verdict-watch { font-size:12px; font-weight:700; color:var(--amber); }
+.verdict-exit { font-size:12px; font-weight:700; color:var(--red); }
+.du-body { padding:14px 16px; }
+.du-price-row { display:flex; gap:16px; margin-bottom:12px; flex-wrap:wrap; }
+.du-price-cell { text-align:center; }
+.du-price-label { font-size:10px; font-weight:700; color:var(--text3); text-transform:uppercase; margin-bottom:3px; }
+.du-price-val { font-size:15px; font-weight:700; font-family:"DM Mono",monospace; }
+.du-section { margin-bottom:10px; }
+.du-section-title { font-size:10px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; }
+.du-section-body { font-size:12px; color:var(--text2); line-height:1.7; }
+.du-news-item { font-size:11px; color:var(--text2); padding:4px 0; border-bottom:1px solid var(--border); display:flex; gap:8px; }
+.du-news-item:last-child { border-bottom:none; }
+.du-news-sentiment { font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px; flex-shrink:0; }
+.sent-pos { background:var(--green-bg); color:var(--green); }
+.sent-neg { background:var(--red-bg); color:var(--red); }
+.sent-neu { background:#F1F5F9; color:var(--text3); }
+.du-tech-strip { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+.du-tech-pill { font-size:10px; font-weight:600; padding:2px 8px; border-radius:4px; background:#F1F5F9; color:var(--text2); }
+.du-tech-pill.good { background:var(--green-bg); color:var(--green); }
+.du-tech-pill.bad { background:var(--red-bg); color:var(--red); }
+.du-tech-pill.neutral { background:var(--amber-bg); color:var(--amber); }
+.du-watch-level { font-size:12px; color:var(--amber); font-weight:600; margin-top:8px; }
+.du-exit-alert { background:var(--red-bg); border:1px solid #FCA5A5; border-radius:8px; padding:12px 16px; margin-bottom:8px; display:flex; gap:12px; align-items:flex-start; }
+.du-history-day { background:#fff; border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:8px; cursor:pointer; transition:background .1s; }
+.du-history-day:hover { background:var(--bg); }
+.du-history-date { font-size:13px; font-weight:700; margin-bottom:4px; }
+.du-history-summary { font-size:12px; color:var(--text2); }
+.du-history-pills { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
 
 /* ── MONITOR ── */
 .mon-row-danger td:first-child { border-left: 3px solid var(--red); }
@@ -648,6 +996,7 @@ For each, respond:
     <div class="tab" data-tab="critic">Critic AI<span class="tab-badge" id="badge-critic">—</span></div>
     <div class="tab" data-tab="learning">Learning Loop<span class="tab-badge" id="badge-rules">—</span></div>
     <div class="tab" data-tab="monitor">🔴 Live Monitor<span class="tab-badge" id="badge-alerts">—</span></div>
+    <div class="tab" data-tab="daily">📋 Daily Updates<span class="tab-badge" id="badge-daily">—</span></div>
     <div class="tab" onclick="window.location.href='/research.html'" style="color:var(--accent);font-weight:600">⚡ Research Session →</div>
   </div>
 
@@ -910,6 +1259,50 @@ For each, respond:
     </div>
   </div>
 
+
+  <!-- ═══ DAILY UPDATES ══════════════════════════════════ -->
+  <div class="panel" id="panel-daily">
+    <div class="summary">
+      <div class="sum-card"><div class="sum-num num-blue" id="du-positions">—</div><div class="sum-label">Positions</div></div>
+      <div class="sum-card"><div class="sum-num num-green" id="du-hold">—</div><div class="sum-label">Hold</div></div>
+      <div class="sum-card"><div class="sum-num num-amber" id="du-watch">—</div><div class="sum-label">Watch</div></div>
+      <div class="sum-card"><div class="sum-num num-red" id="du-exit">—</div><div class="sum-label">Exit</div></div>
+      <div class="sum-card"><div class="sum-num" id="du-thesis-intact">—</div><div class="sum-label">Thesis OK</div></div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:11px;color:var(--text3)" id="du-last-run"></span>
+        <button class="btn-primary" id="du-run-btn" onclick="runDailyUpdates()">
+          <span class="spinner"></span>📋 Run Daily Update
+        </button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="info-box">
+        <strong>Daily Updates</strong> — runs every trading day, grades every open position across Portfolio A and B. For each trade: current price vs entry, technical picture today, news that may change the thesis, and a clear <span style="color:var(--green);font-weight:600">HOLD</span> / <span style="color:var(--amber);font-weight:600">WATCH</span> / <span style="color:var(--red);font-weight:600">EXIT</span> call. Builds a running log so you can track how each thesis evolves day by day.
+      </div>
+
+      <!-- Today's update -->
+      <div id="du-today-wrap" style="display:none">
+        <div class="section-label" id="du-today-label">Today's Update</div>
+
+        <!-- Exit alerts first -->
+        <div id="du-exit-alerts"></div>
+
+        <!-- Position updates grid -->
+        <div id="du-updates-grid"></div>
+      </div>
+
+      <!-- History -->
+      <div id="du-history-wrap">
+        <div class="section-label">Update History</div>
+        <div id="du-history-list">
+          <div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No daily updates yet</div><div class="empty-sub">Run your first daily update above</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
 </div><!-- /app -->
 
 <!-- Pick Modal -->
@@ -988,6 +1381,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (this.dataset.tab === 'compare') renderCompare();
     if (this.dataset.tab === 'learning') renderLearning();
     if (this.dataset.tab === 'monitor') loadMonitor();
+    if (this.dataset.tab === 'daily') loadDailyUpdates();
   });
 });
 
@@ -1811,6 +2205,308 @@ For each, respond:
   }
 }
 
+
+/* ══ DAILY UPDATES ════════════════════════════════ */
+let dailyUpdates = [];
+
+async function loadDailyUpdates() {
+  dailyUpdates = await ghRaw(STUDY_REPO, 'daily_updates.json') || [];
+  renderDailyHistory();
+  document.getElementById('badge-daily').textContent = dailyUpdates.length;
+  if (dailyUpdates.length) {
+    const today = new Date().toDateString();
+    const todayRun = dailyUpdates.find(d => new Date(d.date).toDateString() === today);
+    if (todayRun) renderTodayUpdate(todayRun);
+    document.getElementById('du-last-run').textContent = dailyUpdates.length
+      ? 'Last run: ' + new Date(dailyUpdates[0].date).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
+      : '';
+  }
+}
+
+async function runDailyUpdates() {
+  const btn = document.getElementById('du-run-btn');
+  btn.disabled = true; btn.classList.add('loading');
+  showToast('Running daily updates… this takes 2-3 min');
+
+  try {
+    // Load all open positions
+    const [coreData, swingData] = await Promise.all([
+      ghRaw(DATA_REPO, 'core_portfolio.json'),
+      ghRaw(DATA_REPO, 'swing_portfolio.json')
+    ]);
+    const corePositions  = (coreData?.trades  || []).filter(t => t.status === 'open').map(t => ({...t, portfolio:'Core (A)'}));
+    const swingPositions = (swingData?.trades  || []).filter(t => t.status === 'open').map(t => ({...t, portfolio:'Swing (A)'}));
+    const bPositions     = (portfolioB || []).filter(p => !p.declined && (!p.status || p.status === 'open')).map(p => ({
+      sym: p.ticker, name: p.ticker, entryPrice: p.entry_price,
+      targetPrice: p.target_price, stopPrice: p.stop_loss,
+      confidence: p.confidence, reason: p.reasoning,
+      entryDate: p.date, portfolio: 'Sonnet (B)'
+    }));
+
+    const allPositions = [...corePositions, ...swingPositions, ...bPositions];
+    if (!allPositions.length) { showToast('No open positions to update'); return; }
+
+    showToast(`Analyzing ${allPositions.length} positions…`);
+
+    // Load market context for today
+    const macroCtx = await ghRaw(DATA_REPO, 'market_context.json');
+    const spyTech = await analyzeSymbol('SPY');
+
+    const updates = [];
+
+    // Process in batches of 3 to avoid rate limits
+    for (let i = 0; i < allPositions.length; i++) {
+      const pos = allPositions[i];
+      const sym = pos.sym || pos.ticker;
+      if (!sym) continue;
+
+      showToast(`Analyzing ${sym} (${i+1}/${allPositions.length})…`);
+
+      // Fetch live data
+      const [tech, news, quote] = await Promise.all([
+        analyzeSymbol(sym),
+        fh(`company-news?symbol=${sym}&from=${new Date(Date.now()-2*86400000).toISOString().split('T')[0]}&to=${new Date().toISOString().split('T')[0]}`),
+        fh(`quote?symbol=${sym}`)
+      ]);
+
+      const price   = quote?.c || tech?.price || pos.entryPrice;
+      const pnlPct  = pos.entryPrice ? ((price - pos.entryPrice) / pos.entryPrice * 100) : 0;
+      const daysIn  = pos.entryDate ? Math.floor((Date.now() - new Date(pos.entryDate)) / 86400000) : 0;
+      const stopDist = pos.stopPrice ? ((price - pos.stopPrice) / pos.stopPrice * 100) : null;
+      const targDist = pos.targetPrice ? ((pos.targetPrice - price) / price * 100) : null;
+
+      // Recent news headlines
+      const recentNews = (news || []).slice(0, 4).map(n => ({
+        headline: n.headline,
+        source: n.source,
+        url: n.url
+      }));
+
+      // Build technical summary
+      const techSummary = tech ? {
+        rsi: tech.rsi,
+        trend: tech.trend,
+        aboveSMA50: tech.aboveSMA50,
+        aboveSMA200: tech.aboveSMA200,
+        macdBullish: parseFloat(tech.macd||0) > 0,
+        volume: tech.volume,
+        dayChange: tech.dayChange,
+        score: tech.score
+      } : null;
+
+      // AI daily assessment
+      const assessment = await ai(
+        `You are a daily position review analyst. For each open trade, assess whether the thesis is still intact based on today's price action, technicals, and news. Be direct and specific. Respond ONLY in valid JSON.`,
+        `Position Review: ${sym} (${pos.portfolio})
+
+TRADE DETAILS:
+- Entry: $${pos.entryPrice?.toFixed(2)} on ${pos.entryDate ? new Date(pos.entryDate).toLocaleDateString() : 'unknown'}
+- Current: $${price?.toFixed(2)} (${pnlPct>=0?'+':''}${pnlPct.toFixed(2)}%)
+- Target: $${pos.targetPrice?.toFixed(2)||'none'} (${targDist!==null?(targDist>=0?'+':'')+targDist.toFixed(1)+'% away':'—'})
+- Stop: $${pos.stopPrice?.toFixed(2)||'none'} (${stopDist!==null?stopDist.toFixed(1)+'% cushion':'—'})
+- Days held: ${daysIn}
+- Original thesis: ${pos.reason || 'not recorded'}
+
+TODAY'S TECHNICALS:
+- RSI(14): ${tech?.rsi||'—'} ${parseFloat(tech?.rsi||50)>70?'⚠ OVERBOUGHT':parseFloat(tech?.rsi||50)<30?'⚠ OVERSOLD':''}
+- Trend: ${tech?.trend||'—'}
+- vs SMA50: ${tech?.aboveSMA50?'Above ✓':'Below ✗'}
+- vs SMA200: ${tech?.aboveSMA200?'Above ✓':'Below ✗'}
+- MACD: ${parseFloat(tech?.macd||0)>0?'Bullish ✓':'Bearish ✗'}
+- Volume: ${tech?.volume||'—'}
+- Today's move: ${tech?.dayChange>=0?'+':''}${tech?.dayChange||0}%
+
+MARKET CONTEXT:
+- SPY today: ${spyTech?.dayChange>=0?'+':''}${spyTech?.dayChange||0}% · trend: ${spyTech?.trend}
+- Risk environment: ${macroCtx?.macro?.riskOn?'Risk On':'Risk Off'}
+
+RECENT NEWS (last 48h):
+${recentNews.map(n=>n.headline).join('\n') || 'No recent news'}
+
+Respond with JSON:
+{
+  "verdict": "HOLD" | "WATCH" | "EXIT",
+  "thesis_intact": true | false,
+  "confidence_change": "increasing" | "decreasing" | "stable",
+  "technical_assessment": "What is the chart saying today? 2-3 sentences specific to price levels and indicators.",
+  "thesis_check": "Is the original thesis still playing out? What has changed or confirmed? 2-3 sentences.",
+  "news_impact": "How does recent news affect the trade? 1-2 sentences. If no news, say so.",
+  "news_sentiment": "positive" | "negative" | "neutral" | "none",
+  "watch_level": "If WATCH or EXIT: specific price to watch. If HOLD: what would change your mind.",
+  "action_detail": "Specific, actionable instruction for today. What exactly should the trader do or monitor?",
+  "days_remaining": "Based on thesis, how many more days does this trade need?",
+  "risk_flag": null | "string describing new or elevated risk discovered today"
+}`,
+        900
+      );
+
+      let assess;
+      try { assess = parseJSON(assessment); }
+      catch(e) { assess = { verdict:'WATCH', thesis_intact:true, technical_assessment:'Parse error', action_detail:'Check manually', news_sentiment:'neutral' }; }
+
+      updates.push({
+        sym, portfolio: pos.portfolio,
+        entry: pos.entryPrice, current: price,
+        pnlPct: parseFloat(pnlPct.toFixed(2)),
+        daysIn, stopDist: stopDist?.toFixed(1),
+        targDist: targDist?.toFixed(1),
+        tech: techSummary,
+        news: recentNews,
+        ...assess
+      });
+
+      // Small delay between positions
+      await new Promise(r => setTimeout(r, 400));
+    }
+
+    // Sort: EXIT first, then WATCH, then HOLD
+    updates.sort((a,b) => {
+      const order = {EXIT:0, WATCH:1, HOLD:2};
+      return (order[a.verdict]||2) - (order[b.verdict]||2);
+    });
+
+    // Build today's update record
+    const todayRecord = {
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      positions_reviewed: updates.length,
+      holds: updates.filter(u=>u.verdict==='HOLD').length,
+      watches: updates.filter(u=>u.verdict==='WATCH').length,
+      exits: updates.filter(u=>u.verdict==='EXIT').length,
+      thesis_intact: updates.filter(u=>u.thesis_intact).length,
+      market_context: { spyChange: spyTech?.dayChange, spyTrend: spyTech?.trend, riskOn: macroCtx?.macro?.riskOn },
+      updates
+    };
+
+    // Prepend to history
+    dailyUpdates.unshift(todayRecord);
+    await ghPut(STUDY_REPO, 'daily_updates.json', dailyUpdates);
+
+    renderTodayUpdate(todayRecord);
+    renderDailyHistory();
+    document.getElementById('badge-daily').textContent = dailyUpdates.length;
+    document.getElementById('du-last-run').textContent = 'Updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    showToast(`✦ Daily update complete — ${updates.filter(u=>u.verdict==='EXIT').length} exits, ${updates.filter(u=>u.verdict==='WATCH').length} watches`);
+
+  } catch(e) {
+    showToast('Daily update error: ' + e.message);
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.classList.remove('loading');
+  }
+}
+
+function renderTodayUpdate(record) {
+  document.getElementById('du-today-wrap').style.display = 'block';
+  document.getElementById('du-today-label').textContent = 'Update — ' + new Date(record.date).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+
+  // Summary stats
+  document.getElementById('du-positions').textContent = record.positions_reviewed || 0;
+  document.getElementById('du-hold').textContent = record.holds || 0;
+  document.getElementById('du-watch').textContent = record.watches || 0;
+  document.getElementById('du-exit').textContent = record.exits || 0;
+  const intactEl = document.getElementById('du-thesis-intact');
+  intactEl.textContent = record.thesis_intact || 0;
+  intactEl.className = 'sum-num ' + ((record.thesis_intact||0) >= (record.positions_reviewed||1)*0.6 ? 'num-green' : 'num-red');
+
+  // Exit alerts at top
+  const exits = (record.updates||[]).filter(u => u.verdict === 'EXIT');
+  document.getElementById('du-exit-alerts').innerHTML = exits.map(u => `
+    <div class="du-exit-alert">
+      <div style="font-size:20px">🚨</div>
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px">${u.sym} (${u.portfolio}) — EXIT SIGNAL</div>
+        <div style="font-size:12px;color:var(--red)">${u.action_detail}</div>
+        ${u.watch_level?`<div style="font-size:11px;color:var(--text2);margin-top:4px">Watch level: ${u.watch_level}</div>`:''}
+      </div>
+      <div style="margin-left:auto;text-align:right;flex-shrink:0">
+        <div style="font-size:15px;font-weight:700;font-family:'DM Mono',monospace;color:${u.pnlPct>=0?'var(--green)':'var(--red)'}">${u.pnlPct>=0?'+':''}${u.pnlPct}%</div>
+        <div style="font-size:11px;color:var(--text3)">${u.daysIn} days in</div>
+      </div>
+    </div>`).join('');
+
+  // All position updates
+  document.getElementById('du-updates-grid').innerHTML = (record.updates||[]).map(u => {
+    const verdictClass = u.verdict==='HOLD'?'hold':u.verdict==='WATCH'?'watch':'exit';
+    const pnlColor = u.pnlPct>=0?'var(--green)':'var(--red)';
+    const techScore = u.tech?.score||50;
+
+    return `<div class="du-card">
+      <div class="du-card-head ${verdictClass}">
+        <div>
+          <div class="du-sym">${u.sym} <span style="font-size:11px;font-weight:500;color:var(--text3)">${u.portfolio}</span></div>
+          <div class="du-meta">${u.daysIn} days in · ${u.thesis_intact?'✓ Thesis intact':'⚠ Thesis weakening'} · Conf ${u.confidence_change||'stable'}</div>
+        </div>
+        <div class="du-verdict">
+          <span class="verdict-${verdictClass}">${u.verdict==='HOLD'?'✓ HOLD':u.verdict==='WATCH'?'⚠ WATCH':'🚨 EXIT'}</span>
+          <span style="font-size:14px;font-weight:700;font-family:'DM Mono',monospace;color:${pnlColor}">${u.pnlPct>=0?'+':''}${u.pnlPct}%</span>
+        </div>
+      </div>
+      <div class="du-body">
+        <div class="du-price-row">
+          <div class="du-price-cell"><div class="du-price-label">Entry</div><div class="du-price-val">$${u.entry?.toFixed(2)||'—'}</div></div>
+          <div class="du-price-cell"><div class="du-price-label">Current</div><div class="du-price-val" style="color:${pnlColor}">$${u.current?.toFixed(2)||'—'}</div></div>
+          <div class="du-price-cell"><div class="du-price-label">vs Stop</div><div class="du-price-val" style="color:${parseFloat(u.stopDist||100)<15?'var(--red)':'var(--text3)'}">${u.stopDist!==null?u.stopDist+'%':'—'}</div></div>
+          <div class="du-price-cell"><div class="du-price-label">to Target</div><div class="du-price-val" style="color:var(--green)">${u.targDist!==null?u.targDist+'%':'—'}</div></div>
+        </div>
+
+        <!-- Technicals strip -->
+        <div class="du-tech-strip">
+          <span class="du-tech-pill ${u.tech?.aboveSMA50?'good':'bad'}">SMA50 ${u.tech?.aboveSMA50?'↑':'↓'}</span>
+          <span class="du-tech-pill ${u.tech?.aboveSMA200?'good':'bad'}">SMA200 ${u.tech?.aboveSMA200?'↑':'↓'}</span>
+          <span class="du-tech-pill ${u.tech?.macdBullish?'good':'bad'}">MACD ${u.tech?.macdBullish?'▲':'▼'}</span>
+          <span class="du-tech-pill ${parseFloat(u.tech?.rsi||50)<70&&parseFloat(u.tech?.rsi||50)>30?'good':'bad'}">RSI ${u.tech?.rsi||'—'}</span>
+          <span class="du-tech-pill ${u.tech?.volume==='high'?'good':'neutral'}">Vol ${u.tech?.volume||'—'}</span>
+          <span class="du-tech-pill neutral">Score ${techScore}/100</span>
+        </div>
+
+        <div class="du-section">
+          <div class="du-section-title">📈 Technical Assessment</div>
+          <div class="du-section-body">${u.technical_assessment||'—'}</div>
+        </div>
+
+        <div class="du-section">
+          <div class="du-section-title">🎯 Thesis Check</div>
+          <div class="du-section-body">${u.thesis_check||'—'}</div>
+        </div>
+
+        ${u.news && u.news.length ? `
+        <div class="du-section">
+          <div class="du-section-title">📰 News (48h) — ${u.news_sentiment==='positive'?'<span style="color:var(--green)">Positive</span>':u.news_sentiment==='negative'?'<span style="color:var(--red)">Negative</span>':'Neutral'}</div>
+          ${u.news.map(n=>`<div class="du-news-item"><span class="du-news-sentiment ${u.news_sentiment==='positive'?'sent-pos':u.news_sentiment==='negative'?'sent-neg':'sent-neu'}">${u.news_sentiment?.toUpperCase()||'NEU'}</span>${n.headline}</div>`).join('')}
+        </div>` : ''}
+
+        <div class="du-section">
+          <div class="du-section-title">⚡ Action Today</div>
+          <div class="du-section-body" style="font-weight:600;color:var(--text)">${u.action_detail||'—'}</div>
+        </div>
+
+        ${u.watch_level?`<div class="du-watch-level">👁 Watch: ${u.watch_level}</div>`:''}
+        ${u.risk_flag?`<div style="font-size:12px;color:var(--red);margin-top:8px;background:var(--red-bg);border-radius:6px;padding:7px 10px">⚠ New Risk: ${u.risk_flag}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderDailyHistory() {
+  const el = document.getElementById('du-history-list');
+  if (!dailyUpdates.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No daily updates yet</div><div class="empty-sub">Run your first daily update above</div></div>';
+    return;
+  }
+  el.innerHTML = dailyUpdates.map((d,i) => `
+    <div class="du-history-day" onclick="renderTodayUpdate(dailyUpdates[${i}])">
+      <div class="du-history-date">${new Date(d.date).toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</div>
+      <div class="du-history-summary">${d.positions_reviewed} positions · SPY ${d.market_context?.spyChange>=0?'+':''}${d.market_context?.spyChange||0}% · ${d.market_context?.riskOn?'Risk On':'Risk Off'}</div>
+      <div class="du-history-pills">
+        ${d.holds?`<span class="badge" style="background:var(--green-bg);color:var(--green)">✓ ${d.holds} Hold</span>`:''}
+        ${d.watches?`<span class="badge" style="background:var(--amber-bg);color:var(--amber)">⚠ ${d.watches} Watch</span>`:''}
+        ${d.exits?`<span class="badge" style="background:var(--red-bg);color:var(--red)">🚨 ${d.exits} Exit</span>`:''}
+        <span class="badge" style="background:#F1F5F9;color:var(--text3)">${d.thesis_intact}/${d.positions_reviewed} thesis intact</span>
+      </div>
+    </div>`).join('');
+}
+
 /* ── TOAST ── */
 function showToast(msg) {
   const t=document.getElementById('toast');
@@ -1827,7 +2523,7 @@ function updateClock(){
 /* ── INIT ── */
 async function initApp() {
   updateClock();setInterval(updateClock,30000);
-  await Promise.all([loadPortfolioA(),loadPortfolioB(),loadCritic(),loadLearningData()]);
+  await Promise.all([loadPortfolioA(),loadPortfolioB(),loadCritic(),loadLearningData(),loadDailyUpdates()]);
   renderCalibration();renderRegime();
 }
 </script>
