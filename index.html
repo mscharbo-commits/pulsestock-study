@@ -1357,6 +1357,89 @@ const GH_TOKEN = 'ghp_SdaFPdpP720'+'5qDi9C6vMGLl8K'+'fKV1p39Nq3a';
 const ANT_KEY  = 'sk-ant-api03-PsOAZ0uTvFrSw72tu'+'DRY9ZjLtJ_kzd415IWihK88q3WCeUhPqXPb'+'mZ0S3bLuduPkheOPJ-zp4uehfFglg_oVkw-OuxA8AAA';
 const DATA_REPO  = 'mscharbo-commits/pulsestock-data';
 const STUDY_REPO = 'mscharbo-commits/pulsestock-study-data';
+const DATA_REPO  = 'mscharbo-commits/pulsestock-data';
+
+/* ── FINNHUB + TECHNICAL ENGINE ── */
+const FINNHUB = 'd8fhh6hr01qn443a0bngd8fhh6hr01qn443a0bo0';
+
+async function fh(endpoint) {
+  const r = await fetch(`https://finnhub.io/api/v1/${endpoint}&token=${FINNHUB}`);
+  return r.ok ? r.json() : null;
+}
+function calcSMA(closes, period) {
+  if (closes.length < period) return null;
+  return closes.slice(-period).reduce((a,b)=>a+b,0) / period;
+}
+function calcEMA(closes, period) {
+  if (closes.length < period) return null;
+  const k = 2/(period+1);
+  let ema = closes.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  for (let i=period; i<closes.length; i++) ema = closes[i]*k + ema*(1-k);
+  return ema;
+}
+function calcRSI(closes, period=14) {
+  if (closes.length < period+1) return null;
+  let gains=0, losses=0;
+  for (let i=closes.length-period; i<closes.length; i++) {
+    const diff=closes[i]-closes[i-1];
+    if(diff>0) gains+=diff; else losses+=Math.abs(diff);
+  }
+  return 100-(100/(1+((gains/period)/((losses/period)||0.001))));
+}
+function calcMACD(closes) {
+  const e12=calcEMA(closes,12), e26=calcEMA(closes,26);
+  return (e12&&e26)?{macd:e12-e26}:null;
+}
+function calcBollinger(closes, period=20) {
+  if (closes.length<period) return null;
+  const sl=closes.slice(-period), sma=sl.reduce((a,b)=>a+b,0)/period;
+  const std=Math.sqrt(sl.reduce((a,b)=>a+(b-sma)**2,0)/period);
+  return {upper:sma+2*std, middle:sma, lower:sma-2*std};
+}
+function calcATR(candles, period=14) {
+  if (!candles.h||candles.h.length<period+1) return null;
+  const trs=[];
+  for(let i=1;i<candles.h.length;i++)
+    trs.push(Math.max(candles.h[i]-candles.l[i],Math.abs(candles.h[i]-candles.c[i-1]),Math.abs(candles.l[i]-candles.c[i-1])));
+  return trs.slice(-period).reduce((a,b)=>a+b,0)/period;
+}
+function calcVolumeSignal(candles) {
+  if (!candles.v||candles.v.length<20) return 'normal';
+  const avg=candles.v.slice(-20,-1).reduce((a,b)=>a+b,0)/19;
+  const today=candles.v[candles.v.length-1];
+  return today>avg*1.5?'high':today<avg*0.5?'low':'normal';
+}
+async function analyzeSymbol(sym) {
+  try {
+    const to=Math.floor(Date.now()/1000), from=to-(100*24*3600*1.5);
+    const [quote,candles]=await Promise.all([
+      fh(`quote?symbol=${sym}`),
+      fh(`stock/candle?symbol=${sym}&resolution=D&from=${from}&to=${to}`)
+    ]);
+    if (!candles||candles.s==='no_data'||!candles.c?.length) return null;
+    const c=candles.c, price=quote?.c||c[c.length-1];
+    const sma20=calcSMA(c,20), sma50=calcSMA(c,50), sma200=calcSMA(c,200);
+    const rsi=calcRSI(c), macd=calcMACD(c), bb=calcBollinger(c);
+    const atr=calcATR(candles), vol=calcVolumeSignal(candles);
+    const a20=sma20?price>sma20:null, a50=sma50?price>sma50:null, a200=sma200?price>sma200:null;
+    const trend=(a50&&a200)?'bull':(!a50&&!a200)?'bear':'mixed';
+    let score=50;
+    if(a50) score+=10; if(a200) score+=10;
+    if(rsi&&rsi>50&&rsi<70) score+=10; if(rsi&&rsi>30&&rsi<50) score+=5;
+    if(vol==='high') score+=5; if(macd&&macd.macd>0) score+=10;
+    const dayChange=quote?((quote.c-quote.pc)/quote.pc*100):null;
+    if(dayChange&&dayChange>0) score+=5; if(sma20&&sma50&&sma20>sma50) score+=5;
+    return {
+      sym, price, sma20:sma20?.toFixed(2), sma50:sma50?.toFixed(2), sma200:sma200?.toFixed(2),
+      rsi:rsi?.toFixed(1), macd:macd?.macd?.toFixed(3),
+      bb:bb?{upper:bb.upper.toFixed(2),middle:bb.middle.toFixed(2),lower:bb.lower.toFixed(2)}:null,
+      atr:atr?.toFixed(2), volume:vol, trend, aboveSMA20:a20, aboveSMA50:a50, aboveSMA200:a200,
+      score:Math.min(100,Math.max(0,Math.round(score))),
+      techStop:sma50?(sma50*0.98).toFixed(2):(price*0.92).toFixed(2),
+      dayChange:dayChange?.toFixed(2)
+    };
+  } catch(e) { return null; }
+}
 
 /* ── AUTH ── */
 function checkGate() {
