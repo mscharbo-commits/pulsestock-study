@@ -272,6 +272,310 @@ tbody td{padding:9px 12px;color:var(--text);}
 .empty-title{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:4px;}
 .empty-sub{font-size:13px;color:var(--text3);}
 
+
+
+/* ══ LIVE MONITOR ══════════════════════════════════ */
+const FINNHUB = 'd8fhh6hr01qn443a0bngd8fhh6hr01qn443a0bo0';
+let monitorData = { core:[], swing:[], bOpen:[] };
+let priceCache = {};
+
+async function fetchPrice(sym) {
+  if (priceCache[sym] && (Date.now()-priceCache[sym].t) < 60000) return priceCache[sym].p;
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${FINNHUB}`);
+    const d = await r.json();
+    const p = d.c || d.pc || null; // current or prev close
+    if (p) priceCache[sym] = { p, t: Date.now() };
+    return p;
+  } catch(e) { return null; }
+}
+
+async function fetchPrices(syms) {
+  // Batch with small delay to avoid rate limits
+  const results = {};
+  for (let i=0; i<syms.length; i++) {
+    results[syms[i]] = await fetchPrice(syms[i]);
+    if (i % 5 === 4) await new Promise(r=>setTimeout(r,300));
+  }
+  return results;
+}
+
+function pnlPct(entry, current) {
+  if (!entry || !current) return null;
+  return ((current - entry) / entry) * 100;
+}
+
+function daysHeld(entryDate) {
+  if (!entryDate) return '—';
+  return Math.floor((Date.now() - new Date(entryDate)) / 86400000);
+}
+
+function stopDistPct(entry, stop, current) {
+  if (!stop || stop===0 || !current) return null;
+  return ((current - stop) / stop) * 100;
+}
+
+function targetDistPct(entry, target, current) {
+  if (!target || !current) return null;
+  return ((target - current) / current) * 100;
+}
+
+function signalHTML(pnl, stopDist, maxDays, days) {
+  const overdue = maxDays && days > maxDays;
+  if (stopDist !== null && stopDist < 5) return '<span class="badge badge-sell">⚠ Near Stop</span>';
+  if (stopDist !== null && stopDist < 0) return '<span class="badge badge-sell">🚨 Stop Hit</span>';
+  if (overdue) return '<span class="badge badge-hold">⏰ Overdue</span>';
+  if (pnl > 5) return '<span class="badge badge-buy">↑ On Track</span>';
+  if (pnl < -3) return '<span class="badge badge-sell">↓ Slipping</span>';
+  return '<span class="badge badge-hold">→ Neutral</span>';
+}
+
+function monitorRow(t, price, isB=false) {
+  const entry = t.entryPrice || t.entry_price;
+  const stop  = t.stopPrice || t.stop_loss || 0;
+  const target = t.targetPrice || t.target_price;
+  const pnl   = pnlPct(entry, price);
+  const stopD = stopDistPct(entry, stop, price);
+  const targD = targetDistPct(entry, target, price);
+  const days  = daysHeld(t.entryDate || t.date);
+  const maxD  = t.maxHoldDays || t.maxDays;
+  const sym   = t.sym || t.ticker;
+
+  const pnlStr = pnl!==null ? `<span style="font-weight:600;font-family:'DM Mono',monospace;color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}${pnl.toFixed(2)}%</span>` : '—';
+  const priceStr = price ? `<span class="mono">$${price.toFixed(2)}</span>` : '<span style="color:var(--text3)">—</span>';
+
+  // Stop distance bar
+  let stopStr = '—';
+  if (stopD !== null) {
+    const barPct = Math.min(100, Math.max(0, stopD));
+    const barColor = stopD < 5 ? 'var(--red)' : stopD < 15 ? 'var(--amber)' : 'var(--green)';
+    stopStr = `<div style="display:flex;align-items:center;gap:4px">
+      <div class="progress-bar"><div class="progress-fill" style="width:${barPct}%;background:${barColor}"></div></div>
+      <span class="mono" style="font-size:11px;color:${barColor}">${stopD.toFixed(1)}%</span>
+    </div>`;
+  }
+
+  let targStr = '—';
+  if (targD !== null) {
+    targStr = `<span class="mono" style="font-size:11px;color:${targD<5?'var(--green)':'var(--text3)'}">${targD>=0?'↑':'↓'}${Math.abs(targD).toFixed(1)}%</span>`;
+  }
+
+  // Row danger class
+  const dangerClass = (stopD!==null&&stopD<5)||(pnl!==null&&pnl<-5) ? 'mon-row-danger' : (stopD!==null&&stopD<15)||(pnl!==null&&pnl<-2) ? 'mon-row-warn' : 'mon-row-ok';
+
+  if (isB) {
+    return `<tr class="${dangerClass}" data-sym="${sym}" data-entry="${entry}" data-stop="${stop}" data-pnl="${pnl||0}">
+      <td class="td-sym">${sym}</td>
+      <td><span class="badge badge-${(t.action||'BUY').toUpperCase()}">${t.action||'BUY'}</span></td>
+      <td class="mono">$${entry?.toFixed(2)||'—'}</td>
+      <td>${priceStr}</td>
+      <td>${pnlStr}</td>
+      <td>${stopStr}</td>
+      <td>${targStr}</td>
+      <td style="color:var(--purple);font-family:'DM Mono',monospace">${t.confidence||0}%</td>
+      <td>${signalHTML(pnl||0, stopD, maxD, days)}</td>
+    </tr>`;
+  }
+
+  return `<tr class="${dangerClass}" data-sym="${sym}" data-entry="${entry}" data-stop="${stop}" data-pnl="${pnl||0}">
+    <td class="td-sym">${sym}</td>
+    <td style="font-size:12px;color:var(--text2)">${t.name||''}</td>
+    <td class="mono">$${entry?.toFixed(2)||'—'}</td>
+    <td>${priceStr}</td>
+    <td>${pnlStr}</td>
+    <td>${stopStr}</td>
+    <td>${targStr}</td>
+    <td class="mono" style="color:var(--text3)">${days}</td>
+    <td style="font-size:11px;color:var(--text3)">${t.holdType||t.portfolioType||'—'}</td>
+    <td>${signalHTML(pnl||0, stopD, maxD, days)}</td>
+  </tr>`;
+}
+
+async function loadMonitor() {
+  const btn = document.getElementById('mon-refresh-btn');
+  btn.textContent = '⏳ Loading…'; btn.disabled = true;
+
+  try {
+    // Load portfolio data
+    const [coreData, swingData] = await Promise.all([
+      ghRaw(DATA_REPO, 'core_portfolio.json'),
+      ghRaw(DATA_REPO, 'swing_portfolio.json')
+    ]);
+    const core  = (coreData?.trades  || []).filter(t=>t.status==='open');
+    const swing = (swingData?.trades || []).filter(t=>t.status==='open');
+    const bOpen = portfolioB.filter(p=>!p.declined && (!p.status||p.status==='open'));
+
+    monitorData = { core, swing, bOpen };
+
+    // Collect all symbols
+    const allSyms = [...new Set([
+      ...core.map(t=>t.sym),
+      ...swing.map(t=>t.sym),
+      ...bOpen.map(p=>p.ticker)
+    ])];
+
+    document.getElementById('mon-updated').textContent = 'Fetching ' + allSyms.length + ' quotes…';
+
+    const prices = await fetchPrices(allSyms);
+
+    // Render core
+    let corePnl=0, coreCount=0;
+    document.getElementById('mon-core').innerHTML = core.map(t => {
+      const p = prices[t.sym];
+      const pnl = pnlPct(t.entryPrice, p);
+      if (pnl!==null){corePnl+=pnl;coreCount++;}
+      return monitorRow(t, p);
+    }).join('') || '<tr><td colspan="10" class="empty" style="padding:24px">No core positions</td></tr>';
+
+    // Render swing
+    let swingPnl=0, swingCount=0;
+    document.getElementById('mon-swing').innerHTML = swing.map(t => {
+      const p = prices[t.sym];
+      const pnl = pnlPct(t.entryPrice, p);
+      if (pnl!==null){swingPnl+=pnl;swingCount++;}
+      return monitorRow(t, p);
+    }).join('') || '<tr><td colspan="10" class="empty" style="padding:24px">No swing positions</td></tr>';
+
+    // Render B
+    document.getElementById('mon-b').innerHTML = bOpen.map(t => {
+      const p = prices[t.ticker];
+      return monitorRow({...t, sym:t.ticker, entryPrice:t.entry_price, stopPrice:t.stop_loss, targetPrice:t.target_price, holdType:t.timeframe}, p, true);
+    }).join('') || '<tr><td colspan="9" class="empty" style="padding:24px">No open B positions</td></tr>';
+
+    // Summary stats
+    const allRows = document.querySelectorAll('#mon-core tr[data-sym], #mon-swing tr[data-sym], #mon-b tr[data-sym]');
+    let winners=0, losers=0, danger=0, totalPnl=0, pnlCount=0;
+    allRows.forEach(r => {
+      const pnl = parseFloat(r.dataset.pnl||0);
+      const stop = parseFloat(r.dataset.stop||0);
+      const entry = parseFloat(r.dataset.entry||0);
+      const sym = r.dataset.sym;
+      const price = prices[sym];
+      if (!isNaN(pnl) && pnl!==0) { totalPnl+=pnl; pnlCount++; if(pnl>0) winners++; else losers++; }
+      const stopD = stopDistPct(entry, stop, price);
+      if (stopD!==null && stopD<15) danger++;
+    });
+
+    const totalPos = core.length + swing.length + bOpen.length;
+    document.getElementById('mon-positions').textContent = totalPos;
+    const pnlEl = document.getElementById('mon-pnl');
+    const avgPnl = pnlCount>0 ? totalPnl/pnlCount : 0;
+    pnlEl.textContent = (avgPnl>=0?'+':'')+avgPnl.toFixed(2)+'%';
+    pnlEl.className = 'sum-num '+(avgPnl>=0?'num-green':'num-red');
+    document.getElementById('mon-winners').textContent = winners;
+    document.getElementById('mon-losers').textContent = losers;
+    const dangerEl = document.getElementById('mon-danger');
+    dangerEl.textContent = danger;
+    dangerEl.className = 'sum-num '+(danger>0?'num-red':'num-green');
+    document.getElementById('badge-alerts').textContent = danger > 0 ? '⚠'+danger : '✓';
+
+    // Portfolio P&L summaries
+    if (coreCount) document.getElementById('core-pnl-sum').textContent = `Avg P&L: ${(corePnl/coreCount>=0?'+':''}${(corePnl/coreCount).toFixed(2)}%`;
+    if (swingCount) document.getElementById('swing-pnl-sum').textContent = `Avg P&L: ${(swingPnl/swingCount>=0?'+':''}${(swingPnl/swingCount).toFixed(2)}%`;
+
+    // Alert strip — danger zone trades
+    const allTrades = [
+      ...core.map(t=>({...t,portfolio:'Core (A)'})),
+      ...swing.map(t=>({...t,portfolio:'Swing (A)'})),
+      ...bOpen.map(t=>({sym:t.ticker,name:t.ticker,entryPrice:t.entry_price,stopPrice:t.stop_loss,portfolio:'Sonnet (B)'}))
+    ];
+    const alerts = allTrades.filter(t=>{
+      const p = prices[t.sym];
+      const stopD = stopDistPct(t.entryPrice, t.stopPrice||0, p);
+      const pnl = pnlPct(t.entryPrice, p);
+      return (stopD!==null&&stopD<15) || (pnl!==null&&pnl<-5);
+    });
+
+    document.getElementById('mon-alerts-wrap').innerHTML = alerts.length
+      ? `<div class="section-label" style="margin-top:0">⚠ ${alerts.length} position${alerts.length>1?'s':''} need attention</div>` +
+        alerts.map(t=>{
+          const p = prices[t.sym];
+          const pnl = pnlPct(t.entryPrice, p);
+          const stopD = stopDistPct(t.entryPrice, t.stopPrice||0, p);
+          const isStop = stopD!==null&&stopD<5;
+          return `<div class="alert-card ${isStop?'':'warn-card'}">
+            <div class="alert-icon">${isStop?'🚨':'⚠️'}</div>
+            <div class="alert-body">
+              <strong>${t.sym}</strong> (${t.portfolio}) — 
+              ${pnl!==null?`P&L: <strong style="color:var(--red)">${pnl.toFixed(2)}%</strong>`:''}
+              ${stopD!==null?` · Stop cushion: <strong style="color:var(--red)">${stopD.toFixed(1)}%</strong>`:''}
+              ${isStop?' — <strong>APPROACHING STOP LOSS</strong>':''}
+            </div>
+          </div>`;
+        }).join('')
+      : '';
+
+    document.getElementById('mon-updated').textContent = 'Updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+
+  } catch(e) {
+    showToast('Monitor error: '+e.message);
+    console.error(e);
+  } finally {
+    btn.textContent = '↻ Refresh'; btn.disabled = false;
+  }
+}
+
+async function runLivecritic() {
+  const btn = document.getElementById('mon-ai-btn');
+  btn.disabled=true; btn.classList.add('loading');
+
+  try {
+    // Get all deteriorating trades from the table
+    const rows = document.querySelectorAll('#mon-core tr.mon-row-danger, #mon-core tr.mon-row-warn, #mon-swing tr.mon-row-danger, #mon-swing tr.mon-row-warn, #mon-b tr.mon-row-danger');
+    if (!rows.length) { showToast('No deteriorating trades to triage'); return; }
+
+    const trades = Array.from(rows).map(r => {
+      const sym = r.dataset.sym;
+      const pnl = parseFloat(r.dataset.pnl||0);
+      const stop = parseFloat(r.dataset.stop||0);
+      const entry = parseFloat(r.dataset.entry||0);
+      const price = priceCache[sym]?.p;
+      const stopD = stopDistPct(entry, stop, price);
+      return { sym, pnl: pnl.toFixed(2)+'%', stop_cushion: stopD?.toFixed(1)+'%'||'unknown', current_price: price, entry_price: entry, stop_price: stop };
+    });
+
+    const regime = regimeLog.current_regime;
+    const sys = `You are the Live Trade Monitor Critic for PulseStock. Your job is to triage deteriorating open positions in real time and give a clear hold/reduce/exit recommendation for each. Be direct, specific, and actionable. Respond ONLY in valid JSON array.`;
+    const usr = `These positions are deteriorating right now. Current market regime: ${regime?regime.label+' — '+regime.description:'unknown'}.
+
+Positions needing triage:
+${JSON.stringify(trades)}
+
+For each, respond:
+[{
+  "sym": "SYMBOL",
+  "pnl": "current P&L %",
+  "assessment": "2-3 sentences: Is this a temporary pullback or thesis breakdown? Is the sector/macro environment working against it?",
+  "recommendation": "HOLD" | "REDUCE" | "EXIT",
+  "reason": "One sentence: specific reason for recommendation",
+  "watch_level": "Price level to watch — if it breaks X, exit immediately"
+}]`;
+
+    const raw = await ai(sys, usr, 1500);
+    const items = parseJSON(raw);
+    if (!Array.isArray(items)) throw new Error('Expected array');
+
+    const wrap = document.getElementById('live-critic-wrap');
+    wrap.innerHTML = `<div class="section-label">🔬 AI Triage — ${new Date().toLocaleTimeString()}</div>` +
+      items.map(c => `
+        <div class="live-critique">
+          <div class="live-critique-top">
+            <span class="live-critique-sym">${c.sym} <span style="font-size:12px;font-weight:400;color:${parseFloat(c.pnl)<0?'var(--red)':'var(--green)'}">${c.pnl}</span></span>
+            <span class="live-critique-action action-${(c.recommendation||'hold').toLowerCase()}">${c.recommendation||'HOLD'}</span>
+          </div>
+          <div class="live-critique-body">${c.assessment}</div>
+          <div style="font-size:12px;margin-bottom:6px"><strong>Reason:</strong> ${c.reason}</div>
+          ${c.watch_level?`<div style="font-size:11px;color:var(--amber)">👁 Watch: ${c.watch_level}</div>`:''}
+        </div>`).join('');
+
+    showToast(`✦ AI triage complete — ${items.length} positions assessed`);
+  } catch(e) {
+    showToast('Triage error: '+e.message);
+  } finally {
+    btn.disabled=false; btn.classList.remove('loading');
+  }
+}
+
 /* ── TOAST ── */
 #toast{position:fixed;bottom:24px;right:24px;background:var(--text);
   color:#fff;border-radius:8px;padding:12px 18px;font-size:13px;font-weight:500;
@@ -282,6 +586,28 @@ tbody td{padding:9px 12px;color:var(--text);}
 /* ── INFO BOX ── */
 .info-box{background:var(--accent-light);border:1px solid #C3D9FC;border-radius:8px;
   padding:12px 16px;font-size:12px;color:var(--accent);margin-bottom:14px;line-height:1.6;}
+
+
+/* ── MONITOR ── */
+.mon-row-danger td:first-child { border-left: 3px solid var(--red); }
+.mon-row-warn td:first-child { border-left: 3px solid var(--amber); }
+.mon-row-ok td:first-child { border-left: 3px solid var(--green); }
+.progress-bar { width: 80px; height: 6px; background: #EEF2F7; border-radius: 3px; display:inline-block; vertical-align:middle; margin-right:4px; }
+.progress-fill { height: 100%; border-radius: 3px; }
+.alert-card { display:flex; align-items:flex-start; gap:12px; background: var(--red-bg); border: 1px solid #F5C6C2; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+.alert-icon { font-size: 18px; flex-shrink:0; }
+.alert-body { font-size: 12px; color: var(--red); line-height: 1.6; }
+.alert-body strong { color: var(--text); }
+.warn-card { background: var(--amber-bg); border-color: #F59E0B40; }
+.warn-card .alert-body { color: var(--amber); }
+.live-critique { background:#fff; border:1px solid var(--border); border-left:3px solid var(--red); border-radius:0 10px 10px 0; padding:16px; margin-bottom:10px; box-shadow:var(--shadow); }
+.live-critique-top { display:flex; justify-content:space-between; margin-bottom:8px; }
+.live-critique-sym { font-size:15px; font-weight:700; font-family:'DM Mono',monospace; }
+.live-critique-body { font-size:12px; color:var(--text2); line-height:1.7; margin-bottom:8px; }
+.live-critique-action { font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-block; }
+.action-hold { background:#F1F5F9; color:var(--text2); }
+.action-reduce { background:var(--amber-bg); color:var(--amber); }
+.action-exit { background:var(--red-bg); color:var(--red); }
 
 @media(max-width:768px){
   .compare-grid,.loop-grid,.cal-grid{grid-template-columns:1fr;}
@@ -321,6 +647,7 @@ tbody td{padding:9px 12px;color:var(--text);}
     <div class="tab" data-tab="compare">Compare</div>
     <div class="tab" data-tab="critic">Critic AI<span class="tab-badge" id="badge-critic">—</span></div>
     <div class="tab" data-tab="learning">Learning Loop<span class="tab-badge" id="badge-rules">—</span></div>
+    <div class="tab" data-tab="monitor">🔴 Live Monitor<span class="tab-badge" id="badge-alerts">—</span></div>
   </div>
 
   <!-- ═══ PORTFOLIO A ═══════════════════════════════════ -->
@@ -519,6 +846,69 @@ tbody td{padding:9px 12px;color:var(--text);}
     </div>
   </div>
 
+
+  <!-- ═══ LIVE MONITOR ════════════════════════════════════ -->
+  <div class="panel" id="panel-monitor">
+    <div class="summary">
+      <div class="sum-card"><div class="sum-num num-blue" id="mon-positions">—</div><div class="sum-label">Positions</div></div>
+      <div class="sum-card"><div class="sum-num" id="mon-pnl">—</div><div class="sum-label">Total P&amp;L</div></div>
+      <div class="sum-card"><div class="sum-num num-green" id="mon-winners">—</div><div class="sum-label">Winners</div></div>
+      <div class="sum-card"><div class="sum-num num-red" id="mon-losers">—</div><div class="sum-label">Losers</div></div>
+      <div class="sum-card"><div class="sum-num num-red" id="mon-danger">—</div><div class="sum-label">Danger Zone</div></div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <span style="font-size:11px;color:var(--text3)" id="mon-updated"></span>
+        <button class="btn-secondary" onclick="loadMonitor()" id="mon-refresh-btn">↻ Refresh</button>
+        <button class="btn-secondary" id="mon-ai-btn" onclick="runLivecritic()"><span class="spinner"></span>⚠ AI Triage</button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="info-box">
+        <strong>Live Monitor</strong> — fetches current prices from Finnhub for all open positions across both portfolios. <span style="color:var(--red);font-weight:600">Danger Zone</span> = within 15% of stop loss. <strong>AI Triage</strong> runs the Critic on any deteriorating trades in real time so you can decide to hold, reduce, or exit before the stop triggers.
+      </div>
+
+      <!-- Alert strip -->
+      <div id="mon-alerts-wrap"></div>
+
+      <!-- Portfolio A positions -->
+      <div class="section-label">Portfolio A — Haiku Open Positions</div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">Core Portfolio</div><div id="core-pnl-sum" style="font-size:12px;color:var(--text2)"></div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Ticker</th><th>Name</th><th>Entry</th><th>Current</th><th>P&amp;L %</th><th>vs Stop</th><th>vs Target</th><th>Days</th><th>Hold Type</th><th>Signal</th></tr></thead>
+            <tbody id="mon-core"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">Swing Portfolio</div><div id="swing-pnl-sum" style="font-size:12px;color:var(--text2)"></div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Ticker</th><th>Name</th><th>Entry</th><th>Current</th><th>P&amp;L %</th><th>vs Stop</th><th>vs Target</th><th>Days</th><th>Hold Type</th><th>Signal</th></tr></thead>
+            <tbody id="mon-swing"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Portfolio B positions -->
+      <div class="section-label">Portfolio B — Sonnet Open Positions</div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head"><div class="card-title">Sonnet Picks (open)</div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Ticker</th><th>Action</th><th>Entry</th><th>Current</th><th>P&amp;L %</th><th>vs Stop</th><th>vs Target</th><th>Conf</th><th>Signal</th></tr></thead>
+            <tbody id="mon-b"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Live critic output -->
+      <div id="live-critic-wrap"></div>
+
+    </div>
+  </div>
+
 </div><!-- /app -->
 
 <!-- Pick Modal -->
@@ -596,6 +986,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.getElementById('panel-'+this.dataset.tab).classList.add('active');
     if (this.dataset.tab === 'compare') renderCompare();
     if (this.dataset.tab === 'learning') renderLearning();
+    if (this.dataset.tab === 'monitor') loadMonitor();
   });
 });
 
@@ -1113,6 +1504,310 @@ async function runCounterfactual() {
     showToast('✦ Counterfactual analysis complete');
   } catch(e){showToast('Error: '+e.message);}
   finally{btn.disabled=false;btn.classList.remove('loading');}
+}
+
+
+
+/* ══ LIVE MONITOR ══════════════════════════════════ */
+const FINNHUB = 'd8fhh6hr01qn443a0bngd8fhh6hr01qn443a0bo0';
+let monitorData = { core:[], swing:[], bOpen:[] };
+let priceCache = {};
+
+async function fetchPrice(sym) {
+  if (priceCache[sym] && (Date.now()-priceCache[sym].t) < 60000) return priceCache[sym].p;
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${FINNHUB}`);
+    const d = await r.json();
+    const p = d.c || d.pc || null; // current or prev close
+    if (p) priceCache[sym] = { p, t: Date.now() };
+    return p;
+  } catch(e) { return null; }
+}
+
+async function fetchPrices(syms) {
+  // Batch with small delay to avoid rate limits
+  const results = {};
+  for (let i=0; i<syms.length; i++) {
+    results[syms[i]] = await fetchPrice(syms[i]);
+    if (i % 5 === 4) await new Promise(r=>setTimeout(r,300));
+  }
+  return results;
+}
+
+function pnlPct(entry, current) {
+  if (!entry || !current) return null;
+  return ((current - entry) / entry) * 100;
+}
+
+function daysHeld(entryDate) {
+  if (!entryDate) return '—';
+  return Math.floor((Date.now() - new Date(entryDate)) / 86400000);
+}
+
+function stopDistPct(entry, stop, current) {
+  if (!stop || stop===0 || !current) return null;
+  return ((current - stop) / stop) * 100;
+}
+
+function targetDistPct(entry, target, current) {
+  if (!target || !current) return null;
+  return ((target - current) / current) * 100;
+}
+
+function signalHTML(pnl, stopDist, maxDays, days) {
+  const overdue = maxDays && days > maxDays;
+  if (stopDist !== null && stopDist < 5) return '<span class="badge badge-sell">⚠ Near Stop</span>';
+  if (stopDist !== null && stopDist < 0) return '<span class="badge badge-sell">🚨 Stop Hit</span>';
+  if (overdue) return '<span class="badge badge-hold">⏰ Overdue</span>';
+  if (pnl > 5) return '<span class="badge badge-buy">↑ On Track</span>';
+  if (pnl < -3) return '<span class="badge badge-sell">↓ Slipping</span>';
+  return '<span class="badge badge-hold">→ Neutral</span>';
+}
+
+function monitorRow(t, price, isB=false) {
+  const entry = t.entryPrice || t.entry_price;
+  const stop  = t.stopPrice || t.stop_loss || 0;
+  const target = t.targetPrice || t.target_price;
+  const pnl   = pnlPct(entry, price);
+  const stopD = stopDistPct(entry, stop, price);
+  const targD = targetDistPct(entry, target, price);
+  const days  = daysHeld(t.entryDate || t.date);
+  const maxD  = t.maxHoldDays || t.maxDays;
+  const sym   = t.sym || t.ticker;
+
+  const pnlStr = pnl!==null ? `<span style="font-weight:600;font-family:'DM Mono',monospace;color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}${pnl.toFixed(2)}%</span>` : '—';
+  const priceStr = price ? `<span class="mono">$${price.toFixed(2)}</span>` : '<span style="color:var(--text3)">—</span>';
+
+  // Stop distance bar
+  let stopStr = '—';
+  if (stopD !== null) {
+    const barPct = Math.min(100, Math.max(0, stopD));
+    const barColor = stopD < 5 ? 'var(--red)' : stopD < 15 ? 'var(--amber)' : 'var(--green)';
+    stopStr = `<div style="display:flex;align-items:center;gap:4px">
+      <div class="progress-bar"><div class="progress-fill" style="width:${barPct}%;background:${barColor}"></div></div>
+      <span class="mono" style="font-size:11px;color:${barColor}">${stopD.toFixed(1)}%</span>
+    </div>`;
+  }
+
+  let targStr = '—';
+  if (targD !== null) {
+    targStr = `<span class="mono" style="font-size:11px;color:${targD<5?'var(--green)':'var(--text3)'}">${targD>=0?'↑':'↓'}${Math.abs(targD).toFixed(1)}%</span>`;
+  }
+
+  // Row danger class
+  const dangerClass = (stopD!==null&&stopD<5)||(pnl!==null&&pnl<-5) ? 'mon-row-danger' : (stopD!==null&&stopD<15)||(pnl!==null&&pnl<-2) ? 'mon-row-warn' : 'mon-row-ok';
+
+  if (isB) {
+    return `<tr class="${dangerClass}" data-sym="${sym}" data-entry="${entry}" data-stop="${stop}" data-pnl="${pnl||0}">
+      <td class="td-sym">${sym}</td>
+      <td><span class="badge badge-${(t.action||'BUY').toUpperCase()}">${t.action||'BUY'}</span></td>
+      <td class="mono">$${entry?.toFixed(2)||'—'}</td>
+      <td>${priceStr}</td>
+      <td>${pnlStr}</td>
+      <td>${stopStr}</td>
+      <td>${targStr}</td>
+      <td style="color:var(--purple);font-family:'DM Mono',monospace">${t.confidence||0}%</td>
+      <td>${signalHTML(pnl||0, stopD, maxD, days)}</td>
+    </tr>`;
+  }
+
+  return `<tr class="${dangerClass}" data-sym="${sym}" data-entry="${entry}" data-stop="${stop}" data-pnl="${pnl||0}">
+    <td class="td-sym">${sym}</td>
+    <td style="font-size:12px;color:var(--text2)">${t.name||''}</td>
+    <td class="mono">$${entry?.toFixed(2)||'—'}</td>
+    <td>${priceStr}</td>
+    <td>${pnlStr}</td>
+    <td>${stopStr}</td>
+    <td>${targStr}</td>
+    <td class="mono" style="color:var(--text3)">${days}</td>
+    <td style="font-size:11px;color:var(--text3)">${t.holdType||t.portfolioType||'—'}</td>
+    <td>${signalHTML(pnl||0, stopD, maxD, days)}</td>
+  </tr>`;
+}
+
+async function loadMonitor() {
+  const btn = document.getElementById('mon-refresh-btn');
+  btn.textContent = '⏳ Loading…'; btn.disabled = true;
+
+  try {
+    // Load portfolio data
+    const [coreData, swingData] = await Promise.all([
+      ghRaw(DATA_REPO, 'core_portfolio.json'),
+      ghRaw(DATA_REPO, 'swing_portfolio.json')
+    ]);
+    const core  = (coreData?.trades  || []).filter(t=>t.status==='open');
+    const swing = (swingData?.trades || []).filter(t=>t.status==='open');
+    const bOpen = portfolioB.filter(p=>!p.declined && (!p.status||p.status==='open'));
+
+    monitorData = { core, swing, bOpen };
+
+    // Collect all symbols
+    const allSyms = [...new Set([
+      ...core.map(t=>t.sym),
+      ...swing.map(t=>t.sym),
+      ...bOpen.map(p=>p.ticker)
+    ])];
+
+    document.getElementById('mon-updated').textContent = 'Fetching ' + allSyms.length + ' quotes…';
+
+    const prices = await fetchPrices(allSyms);
+
+    // Render core
+    let corePnl=0, coreCount=0;
+    document.getElementById('mon-core').innerHTML = core.map(t => {
+      const p = prices[t.sym];
+      const pnl = pnlPct(t.entryPrice, p);
+      if (pnl!==null){corePnl+=pnl;coreCount++;}
+      return monitorRow(t, p);
+    }).join('') || '<tr><td colspan="10" class="empty" style="padding:24px">No core positions</td></tr>';
+
+    // Render swing
+    let swingPnl=0, swingCount=0;
+    document.getElementById('mon-swing').innerHTML = swing.map(t => {
+      const p = prices[t.sym];
+      const pnl = pnlPct(t.entryPrice, p);
+      if (pnl!==null){swingPnl+=pnl;swingCount++;}
+      return monitorRow(t, p);
+    }).join('') || '<tr><td colspan="10" class="empty" style="padding:24px">No swing positions</td></tr>';
+
+    // Render B
+    document.getElementById('mon-b').innerHTML = bOpen.map(t => {
+      const p = prices[t.ticker];
+      return monitorRow({...t, sym:t.ticker, entryPrice:t.entry_price, stopPrice:t.stop_loss, targetPrice:t.target_price, holdType:t.timeframe}, p, true);
+    }).join('') || '<tr><td colspan="9" class="empty" style="padding:24px">No open B positions</td></tr>';
+
+    // Summary stats
+    const allRows = document.querySelectorAll('#mon-core tr[data-sym], #mon-swing tr[data-sym], #mon-b tr[data-sym]');
+    let winners=0, losers=0, danger=0, totalPnl=0, pnlCount=0;
+    allRows.forEach(r => {
+      const pnl = parseFloat(r.dataset.pnl||0);
+      const stop = parseFloat(r.dataset.stop||0);
+      const entry = parseFloat(r.dataset.entry||0);
+      const sym = r.dataset.sym;
+      const price = prices[sym];
+      if (!isNaN(pnl) && pnl!==0) { totalPnl+=pnl; pnlCount++; if(pnl>0) winners++; else losers++; }
+      const stopD = stopDistPct(entry, stop, price);
+      if (stopD!==null && stopD<15) danger++;
+    });
+
+    const totalPos = core.length + swing.length + bOpen.length;
+    document.getElementById('mon-positions').textContent = totalPos;
+    const pnlEl = document.getElementById('mon-pnl');
+    const avgPnl = pnlCount>0 ? totalPnl/pnlCount : 0;
+    pnlEl.textContent = (avgPnl>=0?'+':'')+avgPnl.toFixed(2)+'%';
+    pnlEl.className = 'sum-num '+(avgPnl>=0?'num-green':'num-red');
+    document.getElementById('mon-winners').textContent = winners;
+    document.getElementById('mon-losers').textContent = losers;
+    const dangerEl = document.getElementById('mon-danger');
+    dangerEl.textContent = danger;
+    dangerEl.className = 'sum-num '+(danger>0?'num-red':'num-green');
+    document.getElementById('badge-alerts').textContent = danger > 0 ? '⚠'+danger : '✓';
+
+    // Portfolio P&L summaries
+    if (coreCount) document.getElementById('core-pnl-sum').textContent = `Avg P&L: ${(corePnl/coreCount>=0?'+':''}${(corePnl/coreCount).toFixed(2)}%`;
+    if (swingCount) document.getElementById('swing-pnl-sum').textContent = `Avg P&L: ${(swingPnl/swingCount>=0?'+':''}${(swingPnl/swingCount).toFixed(2)}%`;
+
+    // Alert strip — danger zone trades
+    const allTrades = [
+      ...core.map(t=>({...t,portfolio:'Core (A)'})),
+      ...swing.map(t=>({...t,portfolio:'Swing (A)'})),
+      ...bOpen.map(t=>({sym:t.ticker,name:t.ticker,entryPrice:t.entry_price,stopPrice:t.stop_loss,portfolio:'Sonnet (B)'}))
+    ];
+    const alerts = allTrades.filter(t=>{
+      const p = prices[t.sym];
+      const stopD = stopDistPct(t.entryPrice, t.stopPrice||0, p);
+      const pnl = pnlPct(t.entryPrice, p);
+      return (stopD!==null&&stopD<15) || (pnl!==null&&pnl<-5);
+    });
+
+    document.getElementById('mon-alerts-wrap').innerHTML = alerts.length
+      ? `<div class="section-label" style="margin-top:0">⚠ ${alerts.length} position${alerts.length>1?'s':''} need attention</div>` +
+        alerts.map(t=>{
+          const p = prices[t.sym];
+          const pnl = pnlPct(t.entryPrice, p);
+          const stopD = stopDistPct(t.entryPrice, t.stopPrice||0, p);
+          const isStop = stopD!==null&&stopD<5;
+          return `<div class="alert-card ${isStop?'':'warn-card'}">
+            <div class="alert-icon">${isStop?'🚨':'⚠️'}</div>
+            <div class="alert-body">
+              <strong>${t.sym}</strong> (${t.portfolio}) — 
+              ${pnl!==null?`P&L: <strong style="color:var(--red)">${pnl.toFixed(2)}%</strong>`:''}
+              ${stopD!==null?` · Stop cushion: <strong style="color:var(--red)">${stopD.toFixed(1)}%</strong>`:''}
+              ${isStop?' — <strong>APPROACHING STOP LOSS</strong>':''}
+            </div>
+          </div>`;
+        }).join('')
+      : '';
+
+    document.getElementById('mon-updated').textContent = 'Updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+
+  } catch(e) {
+    showToast('Monitor error: '+e.message);
+    console.error(e);
+  } finally {
+    btn.textContent = '↻ Refresh'; btn.disabled = false;
+  }
+}
+
+async function runLivecritic() {
+  const btn = document.getElementById('mon-ai-btn');
+  btn.disabled=true; btn.classList.add('loading');
+
+  try {
+    // Get all deteriorating trades from the table
+    const rows = document.querySelectorAll('#mon-core tr.mon-row-danger, #mon-core tr.mon-row-warn, #mon-swing tr.mon-row-danger, #mon-swing tr.mon-row-warn, #mon-b tr.mon-row-danger');
+    if (!rows.length) { showToast('No deteriorating trades to triage'); return; }
+
+    const trades = Array.from(rows).map(r => {
+      const sym = r.dataset.sym;
+      const pnl = parseFloat(r.dataset.pnl||0);
+      const stop = parseFloat(r.dataset.stop||0);
+      const entry = parseFloat(r.dataset.entry||0);
+      const price = priceCache[sym]?.p;
+      const stopD = stopDistPct(entry, stop, price);
+      return { sym, pnl: pnl.toFixed(2)+'%', stop_cushion: stopD?.toFixed(1)+'%'||'unknown', current_price: price, entry_price: entry, stop_price: stop };
+    });
+
+    const regime = regimeLog.current_regime;
+    const sys = `You are the Live Trade Monitor Critic for PulseStock. Your job is to triage deteriorating open positions in real time and give a clear hold/reduce/exit recommendation for each. Be direct, specific, and actionable. Respond ONLY in valid JSON array.`;
+    const usr = `These positions are deteriorating right now. Current market regime: ${regime?regime.label+' — '+regime.description:'unknown'}.
+
+Positions needing triage:
+${JSON.stringify(trades)}
+
+For each, respond:
+[{
+  "sym": "SYMBOL",
+  "pnl": "current P&L %",
+  "assessment": "2-3 sentences: Is this a temporary pullback or thesis breakdown? Is the sector/macro environment working against it?",
+  "recommendation": "HOLD" | "REDUCE" | "EXIT",
+  "reason": "One sentence: specific reason for recommendation",
+  "watch_level": "Price level to watch — if it breaks X, exit immediately"
+}]`;
+
+    const raw = await ai(sys, usr, 1500);
+    const items = parseJSON(raw);
+    if (!Array.isArray(items)) throw new Error('Expected array');
+
+    const wrap = document.getElementById('live-critic-wrap');
+    wrap.innerHTML = `<div class="section-label">🔬 AI Triage — ${new Date().toLocaleTimeString()}</div>` +
+      items.map(c => `
+        <div class="live-critique">
+          <div class="live-critique-top">
+            <span class="live-critique-sym">${c.sym} <span style="font-size:12px;font-weight:400;color:${parseFloat(c.pnl)<0?'var(--red)':'var(--green)'}">${c.pnl}</span></span>
+            <span class="live-critique-action action-${(c.recommendation||'hold').toLowerCase()}">${c.recommendation||'HOLD'}</span>
+          </div>
+          <div class="live-critique-body">${c.assessment}</div>
+          <div style="font-size:12px;margin-bottom:6px"><strong>Reason:</strong> ${c.reason}</div>
+          ${c.watch_level?`<div style="font-size:11px;color:var(--amber)">👁 Watch: ${c.watch_level}</div>`:''}
+        </div>`).join('');
+
+    showToast(`✦ AI triage complete — ${items.length} positions assessed`);
+  } catch(e) {
+    showToast('Triage error: '+e.message);
+  } finally {
+    btn.disabled=false; btn.classList.remove('loading');
+  }
 }
 
 /* ── TOAST ── */
