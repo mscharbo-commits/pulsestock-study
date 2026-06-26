@@ -700,6 +700,14 @@ document.getElementById('genbtn').addEventListener('click', function() {
     }
     updateProgress();
 
+    // Reload pB fresh from GitHub before each pick to get accurate held tickers
+    raw(STUDY, 'portfolio_b.json').then(function(fresh) {
+      if (fresh) pB = fresh;
+      genOnePick();
+    }).catch(function() { genOnePick(); });
+  }
+
+  function genOnePick() {
     var rules = mem.rules || [];
     var regime = reg.current_regime;
     var regStr = regime ? 'REGIME: ' + regime.label + ' — ' + regime.guidance : 'Regime: unknown.';
@@ -707,7 +715,7 @@ document.getElementById('genbtn').addEventListener('click', function() {
     var existingTickers = pB.filter(function(p) { return !p.declined; }).map(function(p) { return p.ticker; });
     var uniquePicked = existingTickers.filter(function(t, i) { return existingTickers.indexOf(t) === i; });
     var recentB = uniquePicked.slice(-8).join(', ') || 'none';
-    var avoidStr = uniquePicked.length ? 'CRITICAL — do NOT pick any of these already-held tickers: ' + uniquePicked.join(', ') + '. ' : '';
+    var avoidStr = uniquePicked.length ? 'CRITICAL — do NOT pick any of these already-held tickers: ' + uniquePicked.join(', ') + '. Picking any of these is an automatic failure. ' : '';
 
     var bJobs = [];
     for (var i = 0; i < 5; i++) { bJobs.push(raw(DATA, 'batch_' + i + '.json')); }
