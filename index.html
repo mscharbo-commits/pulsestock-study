@@ -435,7 +435,22 @@ function ai(sys,usr,tok){
     return d.content&&d.content[0]?d.content[0].text:'';
   });
 }
-function pj(s){ return JSON.parse(s.replace(/```json\s*/g,'').replace(/```\s*/g,'').trim()); }
+function pj(s){
+  // Strip markdown code blocks
+  var clean = s.replace(/```json\s*/gi,'').replace(/```\s*/gi,'').trim();
+  // Find first { or [ and last } or ]
+  var start = clean.search(/[\[{]/);
+  if(start < 0) throw new Error('No JSON found in: '+clean.substring(0,100));
+  // Find the matching end by counting braces
+  var opener = clean[start], closer = opener==='{' ? '}' : ']';
+  var depth=0, end=-1;
+  for(var i=start;i<clean.length;i++){
+    if(clean[i]===opener) depth++;
+    else if(clean[i]===closer){ depth--; if(depth===0){ end=i; break; } }
+  }
+  if(end<0) throw new Error('Unclosed JSON');
+  return JSON.parse(clean.substring(start, end+1));
+}
 
 // FINNHUB
 function fh(ep){ return fetch('https://finnhub.io/api/v1/'+ep+'&token='+FHK).then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; }); }
@@ -574,14 +589,18 @@ document.getElementById('genbtn').addEventListener('click',function(){
     batches.forEach(function(b){ if(b&&b.picks) universe=universe.concat(b.picks); });
     var buys=universe.filter(function(p){ return p.rating==='BUY'&&(p.confidence||0)>=65; }).slice(0,10);
     // Build list of already-picked tickers and sectors to avoid duplication
+    // Reload pB fresh from GitHub to get latest picks before generating
+    // This prevents generating dupes when picks were added in same session
     var alreadyPicked = pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; });
+    // Dedupe the list (JNJ appears multiple times - only list each once)
+    var uniquePicked = alreadyPicked.filter(function(t,i){ return alreadyPicked.indexOf(t)===i; });
     var alreadySectors = pB.filter(function(p){ return !p.declined && p.sector; }).map(function(p){ return p.sector; });
     // Count sector frequency
     var sectorCount = {};
     alreadySectors.forEach(function(s){ sectorCount[s]=(sectorCount[s]||0)+1; });
     var overweightSectors = Object.keys(sectorCount).filter(function(s){ return sectorCount[s]>=2; });
     var ctx=buys.map(function(p){ return p.sym+' ('+p.sector+'): conf='+p.confidence+'% target=$'+p.target+' - '+p.reason; }).join(' | ')||'No batch data';
-    var avoidStr = alreadyPicked.length ? 'ALREADY PICKED (do NOT repeat these tickers): '+alreadyPicked.join(', ')+'. ' : '';
+    var avoidStr = uniquePicked.length ? 'CRITICAL - do NOT pick any of these tickers, they are ALREADY IN THE PORTFOLIO: '+uniquePicked.join(', ')+'. Picking a duplicate ticker is an automatic failure. ' : '';
     var sectorStr = overweightSectors.length ? 'OVERWEIGHT SECTORS (avoid adding more): '+overweightSectors.join(', ')+'. Diversify into other sectors. ' : '';
     var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr+' '+avoidStr+sectorStr+'Haiku top buys: '+ctx+'. Pick the single BEST trade that is NOT already in the portfolio. Must be a DIFFERENT ticker and ideally a DIFFERENT sector than existing picks. Prioritize: growth sectors (Technology, Financials, Industrials, Consumer Discretionary) over defensives unless regime specifically favors defensives. IMPORTANT: confidence must be an INTEGER between 0 and 100 (e.g. 82, not 0.82). Return JSON only, no markdown, no code block: {"ticker":"SYMBOL","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"sector name","timeframe":"short-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"400-600 words: macro environment, why this SECTOR specifically, why this STOCK specifically, technical setup (price vs MAs, RSI, momentum), fundamental catalyst, risk/reward, adversarial challenge, final conviction","adversarial_response":"3 strongest reasons against this trade","reasoning":"100-150 word final thesis","key_risk":"1-2 sentence biggest risk","regime_context":"'+(regime?regime.label:'unknown')+'","date":"'+new Date().toISOString()+'"}';
     return ai(sys,usr,2000);
@@ -589,6 +608,13 @@ document.getElementById('genbtn').addEventListener('click',function(){
     var pick=pj(raw2);
     // Normalize confidence: Sonnet sometimes returns 0.82 instead of 82
     if(pick.confidence!==undefined&&pick.confidence<=1) pick.confidence=Math.round(pick.confidence*100);
+    // Reject if it picked a duplicate ticker
+    var existingTickers=pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; });
+    if(pick.ticker && existingTickers.indexOf(pick.ticker)>=0 && !pick.declined){
+      pick.declined=true;
+      pick.decline_reason='Duplicate ticker '+pick.ticker+' already in portfolio. System rejected.';
+      toast('⚠ Sonnet picked '+pick.ticker+' again — rejected as duplicate');
+    }
     pick.id=Date.now().toString();
     pB.push(pick);
     return gput(STUDY,'portfolio_b.json',pB).then(function(){ renderB(); toast(pick.declined?'⚠ Declined: '+(pick.decline_reason||'').substring(0,60):'✦ '+pick.ticker+' — '+pick.confidence+'% confidence'); });
