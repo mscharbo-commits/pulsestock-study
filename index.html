@@ -1041,7 +1041,18 @@ document.getElementById('dubtn').addEventListener('click',function(){
         updates.sort(function(a,b){ var o={EXIT:0,WATCH:1,HOLD:2}; return (o[a.verdict]||2)-(o[b.verdict]||2); });
         var rec={id:Date.now().toString(),date:new Date().toISOString(),positions_reviewed:updates.length,holds:updates.filter(function(u){ return u.verdict==='HOLD'; }).length,watches:updates.filter(function(u){ return u.verdict==='WATCH'; }).length,exits:updates.filter(function(u){ return u.verdict==='EXIT'; }).length,updates:updates};
         daily.unshift(rec);
-        return gput(STUDY,'daily_updates.json',daily).then(function(){ renderDayUpdate(rec); renderDayHist(); document.getElementById('bd').textContent=daily.length; document.getElementById('du-last').textContent='Updated '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}); toast('✦ Daily update done — '+rec.exits+' exits, '+rec.watches+' watches'); btn.disabled=false; btn.classList.remove('loading'); });
+        return gput(STUDY,'daily_updates.json',daily).then(function(){
+          renderDayUpdate(rec); renderDayHist();
+          document.getElementById('bd').textContent=daily.length;
+          document.getElementById('du-last').textContent='Updated '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+          toast('✦ Daily update done — '+rec.exits+' exits, '+rec.watches+' watches');
+          btn.disabled=false; btn.classList.remove('loading');
+          // Auto-log EXIT positions to closed trades and run learning loop
+          if(rec.exits > 0) {
+            var exitPositions = rec.updates.filter(function(u){ return u.verdict==='EXIT'; });
+            autoLogExits(exitPositions);
+          }
+        });
       }
       var pos=all[i];
       toast('Analyzing '+pos.sym+' ('+(i+1)+'/'+all.length+')…');
@@ -1160,14 +1171,95 @@ function confirmClose() {
       closedTrades = trades;
       renderClosedTrades();
       closeCloseModal();
-      toast('✦ '+trade.ticker+' logged: '+(returnPct>=0?'+':'')+returnPct.toFixed(2)+'% ('+reason.replace(/_/g,' ')+')');
-      // Auto-run critic if we now have enough data
-      if(trades.length >= 5 && !crits.length) {
-        toast('Running Critic on new closed trade…');
-        document.getElementById('criticbtn').click();
-      }
+      toast('✦ '+trade.ticker+' logged: '+(returnPct>=0?'+':'')+returnPct.toFixed(2)+'% — running Critic…');
+      // Auto-run full learning loop
+      autoRunLearningLoop();
     });
   }).catch(function(e){ toast('Error: '+e.message); });
+}
+
+
+// ── AUTO LEARNING LOOP ────────────────────────────────────
+function autoRunLearningLoop() {
+  // Step 1: Run Critic postmortems
+  var ca = pA.filter(function(p){ return p.return_pct!==undefined; }).slice(-10).map(function(p){ return Object.assign({},p,{portfolio:'A'}); });
+  var cb = pB.filter(function(p){ return !p.declined&&p.return_pct!==undefined; }).map(function(p){ return Object.assign({},p,{portfolio:'B'}); });
+  var all = closedTrades.concat(ca).concat(cb);
+  var seen2 = new Set();
+  all = all.filter(function(t){ var k=(t.ticker||t.sym)+'|'+(t.portfolio||'A'); if(seen2.has(k)) return false; seen2.add(k); return true; });
+  if(!all.length) return;
+
+  toast('🔬 Auto-running Critic…');
+  ai('You are Critic AI. Analyze both winning and losing trades to identify what worked and what failed. Respond ONLY in valid JSON array.',
+    'Analyze these closed trades (wins AND losses): '+JSON.stringify(all.slice(0,15))+
+    ' Return: [{"ticker":"?","portfolio":"?","outcome":"win|loss","date":"?","postmortem":"2-3 sentences — what drove this outcome?","lesson":"one concrete actionable rule","failure_category":"wrong_stock|wrong_timing|overconfidence|sector_weakness|regime_mismatch|correct_thesis|good_entry"}]', 2500)
+  .then(function(r){
+    var items = pj(r);
+    if(!Array.isArray(items)) return;
+    var ex = new Set(crits.map(function(c){ return c.ticker+'|'+c.portfolio; }));
+    var fresh = items.filter(function(c){ return !ex.has(c.ticker+'|'+c.portfolio); });
+    crits = crits.concat(fresh);
+    return gput(STUDY,'critiques.json',crits).then(function(){
+      renderCrits();
+      document.getElementById('bc').textContent = crits.length;
+      toast('✦ '+fresh.length+' postmortems written — updating clusters…');
+      // Step 2: Auto-run clustering
+      return autoRunClustering();
+    });
+  }).catch(function(e){ toast('Critic error: '+e.message); });
+}
+
+function autoRunClustering() {
+  if(crits.length < 3) return Promise.resolve();
+  return ai('You are a trading pattern analyst. Find patterns in BOTH wins and losses. Respond ONLY in valid JSON array.',
+    'Find 3-6 patterns from: '+JSON.stringify(crits.slice(-30))+
+    ' Include positive patterns (what winners had in common) AND negative patterns (what losers had in common).'+
+    ' Return: [{"pattern":"name","frequency":0,"type":"positive|negative","description":"2-3 sentences","recommendation":"specific rule"}]', 1500)
+  .then(function(r){
+    var newClus = pj(r);
+    if(!Array.isArray(newClus)) return;
+    clus = newClus;
+    return gput(STUDY,'mistake_clusters.json',clus).then(function(){
+      renderClus();
+      toast('✦ '+clus.length+' patterns found — updating strategy memory…');
+      // Step 3: Auto-update strategy memory
+      return updateMem(true).then(function(){
+        toast('✦ Learning loop complete — rules updated');
+      });
+    });
+  }).catch(function(e){ toast('Cluster error: '+e.message); });
+}
+
+function autoLogExits(exitPositions) {
+  // Auto-log daily update EXIT verdicts to closed trades
+  raw(STUDY, 'closed_trades.json').then(function(existing){
+    var trades = existing || [];
+    var added = 0;
+    exitPositions.forEach(function(pos){
+      var already = trades.find(function(t){ return t.ticker===pos.sym&&t.portfolio===pos.portfolio; });
+      if(!already && pos.current){
+        var entry = pos.entry || 0;
+        var retPct = entry ? ((pos.current-entry)/entry*100) : 0;
+        trades.push({
+          ticker: pos.sym, entry_price: entry, exit_price: pos.current,
+          return_pct: parseFloat(retPct.toFixed(2)),
+          exit_reason: 'daily_update_exit', status: 'closed',
+          portfolio: pos.portfolio, days_held: pos.daysIn || 0,
+          date: new Date().toISOString(), sector: 'Unknown',
+          notes: pos.action_detail || ''
+        });
+        added++;
+      }
+    });
+    if(added > 0){
+      return gput(STUDY,'closed_trades.json',trades).then(function(){
+        closedTrades = trades;
+        renderClosedTrades();
+        toast('✦ '+added+' EXIT position(s) logged — running Critic…');
+        setTimeout(autoRunLearningLoop, 1000);
+      });
+    }
+  });
 }
 
 // ── INIT ─────────────────────────────────────────────────
