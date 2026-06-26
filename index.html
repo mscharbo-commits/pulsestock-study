@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782507537 -->
+<!-- v1782507897 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -676,155 +676,162 @@ document.getElementById('genbtn').addEventListener('click', function() {
   progress.style.display = 'block';
   logEl.innerHTML = '';
   var completed = 0, published = 0, declined = 0;
+  var sessionHeld = []; // tickers added THIS session
 
   function addLog(msg) {
     logEl.innerHTML = msg + '<br>' + logEl.innerHTML;
   }
-  function updateProgress() {
-    var pct = total > 0 ? ((completed / total) * 100) : 0;
-    barEl.style.width = pct + '%';
+  function updateBar() {
+    barEl.style.width = (total > 0 ? (completed / total * 100) : 0) + '%';
     countEl.textContent = completed + '/' + total;
-    if (completed < total) {
-      statusEl.textContent = 'Generating pick ' + (completed + 1) + ' of ' + total + '…';
-    } else {
-      statusEl.textContent = 'Done — ' + published + ' published, ' + declined + ' declined';
-    }
+    statusEl.textContent = completed < total
+      ? 'Generating pick ' + (completed + 1) + ' of ' + total + '...'
+      : 'Done — ' + published + ' published, ' + declined + ' declined';
+  }
+  function getAllHeld() {
+    var fromPB = pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; });
+    var all = fromPB.concat(sessionHeld);
+    return all.filter(function(t, i, a){ return a.indexOf(t) === i; });
   }
 
-  // Load pB fresh from GitHub ONCE at batch start, then keep in memory
-  statusEl.textContent = 'Loading portfolio…';
+  // Step 0: Load pB fresh from GitHub, then start
+  statusEl.textContent = 'Loading current portfolio...';
   raw(STUDY, 'portfolio_b.json').then(function(fresh) {
     if (fresh) pB = fresh;
-    window._heldTickers = pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; }).filter(function(t,i,a){ return a.indexOf(t)===i; });
-    addLog('Portfolio loaded — ' + window._heldTickers.length + ' tickers held');
-    genOne();
+    addLog('Loaded — ' + getAllHeld().length + ' tickers held');
+    runNext();
   }).catch(function() {
-    window._heldTickers = pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; }).filter(function(t,i,a){ return a.indexOf(t)===i; });
-    genOne();
+    addLog('Loaded from memory — ' + getAllHeld().length + ' tickers held');
+    runNext();
   });
 
-  function genOne() {
+  function runNext() {
     if (completed >= total) {
       btn.disabled = false;
       btn.classList.remove('loading');
-      toast('✦ Batch done: ' + published + ' picks, ' + declined + ' declined');
+      toast('Batch done: ' + published + ' published, ' + declined + ' declined');
       return;
     }
-    updateProgress();
-    // Use in-memory pB as source of truth — already loaded fresh at batch start
-    // This prevents GitHub write-latency from causing overwrites
-    window._heldTickers = pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; }).filter(function(t,i,a){ return a.indexOf(t)===i; });
-    genOnePick();
-  }
+    updateBar();
 
-  function genOnePick() {
+    var held = getAllHeld();
     var rules = mem.rules || [];
     var regime = reg.current_regime;
     var regStr = regime ? 'REGIME: ' + regime.label + ' — ' + regime.guidance : 'Regime: unknown.';
-    var rulesStr = rules.length ? 'IMPORTANT RULES (ALL must be followed): ' + rules.map(function(r, i) { return (i+1)+'. '+r; }).join(' | ') : 'No learned rules yet.';
-    var uniquePicked = window._heldTickers || pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; }).filter(function(t,i,a){ return a.indexOf(t)===i; });
-    var recentB = uniquePicked.slice(-8).join(', ') || 'none';
-    var avoidStr = uniquePicked.length ? 'CRITICAL — do NOT pick any of these tickers, they are ALREADY IN THE PORTFOLIO: ' + uniquePicked.join(', ') + '. This is a hard rule. Picking a duplicate is an automatic DECLINE. ' : '';
+    var rulesStr = rules.length
+      ? 'RULES (ALL must be followed): ' + rules.map(function(r, i){ return (i+1) + '. ' + r; }).join(' | ')
+      : 'No learned rules yet.';
+    var heldStr = held.length
+      ? 'BLACKLIST — do NOT nominate any of these: ' + held.join(', ')
+      : '';
 
-    // Step 1: cheap ticker nomination — Sonnet picks freely from entire market
-    var held = window._heldTickers || [];
-    var heldStr = held.length ? 'BLACKLIST — you MUST NOT nominate any of these tickers, they are already held: ' + held.join(', ') + '. Nominating a held ticker is wrong.' : '';
-    var nomSys = 'You are a stock picking AI. You MUST follow the blacklist exactly. Respond ONLY with a raw JSON object, no markdown, no explanation.';
-    var nomUsr = 'Today: ' + new Date().toDateString() + '. ' + heldStr + ' ' + regStr + ' Nominate ONE stock NOT on the blacklist with high conviction. Respond with ONLY this JSON and nothing else: {"ticker":"SYMBOL","one_line_reason":"one sentence why"}';
+    // Step 1: cheap nomination
+    var nomSys = 'You are a stock picking AI. Respond ONLY with a raw JSON object, no markdown.';
+    var nomUsr = 'Today: ' + new Date().toDateString() + '. ' + heldStr + ' ' + regStr
+      + ' Nominate ONE stock NOT on the blacklist with high conviction today.'
+      + ' Return ONLY: {"ticker":"SYMBOL","reason":"one sentence"}';
 
     ai(nomSys, nomUsr, 250).then(function(nomRaw) {
       if (!nomRaw) throw new Error('Empty nomination');
       var nom;
       try { nom = pj(nomRaw); } catch(e) {
-        // Try extracting ticker with regex fallback
         var m = nomRaw.match(/"ticker"\s*:\s*"([A-Z]{1,5})"/);
-        if (m) nom = {ticker: m[1], one_line_reason: ''};
-        else { addLog('✕ Parse error — skipping'); completed++; updateProgress(); setTimeout(genOne, 1000); return; }
+        if (m) nom = {ticker: m[1], reason: ''};
+        else throw new Error('Nomination parse failed');
       }
-      var ticker = (nom.ticker || '').toUpperCase().replace(/[^A-Z]/g, '').trim();
+      var ticker = (nom.ticker || '').toUpperCase().replace(/[^A-Z]/g, '');
+      if (!ticker || ticker.length < 1 || ticker.length > 5) throw new Error('Invalid ticker: ' + ticker);
 
-      if (!ticker || ticker.length < 1 || ticker.length > 5) {
-        addLog('✕ Invalid ticker — skipping');
-        completed++; updateProgress(); setTimeout(genOne, 1000); return;
-      }
-      if (held.indexOf(ticker) >= 0) {
+      // Hard dupe check — check both pB and sessionHeld
+      var currentHeld = getAllHeld();
+      if (currentHeld.indexOf(ticker) >= 0) {
         declined++;
-        addLog('✕ ' + ticker + ' already held — skipping');
-        completed++; updateProgress(); setTimeout(genOne, 500); return;
-      }
-
-      addLog('→ ' + ticker + ': ' + (nom.one_line_reason || '').substring(0, 70));
-
-      // Step 2: full deep dive only on a new ticker
-      var sys = 'You are Portfolio B — a high-conviction stock pick AI. Chain-of-thought + adversarial self-critique. Confidence threshold is 80% — if confidence is below 80 you MUST set declined:true. Respond ONLY in valid JSON, no markdown.';
-      var usr = 'Today: ' + new Date().toDateString() + '. ' + regStr + ' ' + rulesStr + ' Deep dive on ' + ticker + '. If confidence is below 80%, set declined:true and explain why. Return JSON: {"ticker":"' + ticker + '","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"400-600 words: macro check, dated catalyst in hold window, sector fit, technical setup, risk/reward, adversarial challenge","adversarial_response":"3 objections","reasoning":"100-150 word thesis","key_risk":"biggest risk","regime_context":"' + (regime ? regime.label : 'unknown') + '","date":"' + new Date().toISOString() + '"}';
-
-      return ai(sys, usr, 1800);
-    }).then(function(raw2) {
-      if (raw2 === undefined || raw2 === null) return;
-      if (!raw2) throw new Error('Empty response');
-      var pick = pj(raw2);
-      if (pick.confidence !== undefined && pick.confidence <= 1) pick.confidence = Math.round(pick.confidence * 100);
-      // Enforce 80% confidence gate
-      if (!pick.declined && (pick.confidence || 0) < 80) {
-        pick.declined = true;
-        pick.decline_reason = 'Confidence ' + (pick.confidence || 0) + '% below 80% gate';
-      }
-      var existNow = window._heldTickers || pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; });
-      if (pick.ticker && existNow.indexOf(pick.ticker) >= 0 && !pick.declined) {
-        pick.declined = true;
-        pick.decline_reason = pick.ticker + ' is already in Portfolio B';
-      }
-      if (pick.declined) {
-        pick.id = Date.now().toString();
-        pB.push(pick);
-        declined++;
-        addLog('✕ Declined: ' + (pick.decline_reason || '').substring(0, 60));
+        addLog('x ' + ticker + ' already held — skipping');
         completed++;
-        return gput(STUDY, 'portfolio_b.json', pB).then(function() {
-          renderB();
-          updateProgress();
-          setTimeout(genOne, 2000);
-        });
+        updateBar();
+        setTimeout(runNext, 300);
+        return;
       }
-      return getprice(pick.ticker).then(function(livePrice) {
-        if (livePrice) {
-          var sonnetEntry = pick.entry_price || 0;
-          pick.entry_price = livePrice;
-          if (sonnetEntry > 0) {
-            var tgtPct = pick.target_price ? ((pick.target_price - sonnetEntry) / sonnetEntry) : 0.08;
-            var stpPct = pick.stop_loss ? ((sonnetEntry - pick.stop_loss) / sonnetEntry) : 0.05;
-            tgtPct = Math.min(Math.max(tgtPct, 0.03), 0.20);
-            stpPct = Math.min(Math.max(stpPct, 0.02), 0.10);
-            pick.target_price = parseFloat((livePrice * (1 + tgtPct)).toFixed(2));
-            pick.stop_loss = parseFloat((livePrice * (1 - stpPct)).toFixed(2));
-          } else {
-            pick.target_price = parseFloat((livePrice * 1.08).toFixed(2));
-            pick.stop_loss = parseFloat((livePrice * 0.95).toFixed(2));
-          }
-          pick.price_source = 'finnhub_live';
-          pick.price_fetched_at = new Date().toISOString();
+
+      addLog('-> ' + ticker + ': ' + (nom.reason || '').substring(0, 70));
+
+      // Step 2: full deep dive
+      var sys = 'You are Portfolio B — a high-conviction stock pick AI. '
+        + 'Chain-of-thought + adversarial self-critique. '
+        + 'Confidence threshold is 80% — if confidence is below 80 you MUST set declined:true. '
+        + 'Respond ONLY in valid JSON, no markdown.';
+      var usr = 'Today: ' + new Date().toDateString() + '. ' + regStr + ' ' + rulesStr
+        + ' Deep dive on ' + ticker + '. If confidence below 80%, set declined:true.'
+        + ' Return JSON: {"ticker":"' + ticker + '","action":"BUY","entry_price":0,"target_price":0,'
+        + '"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,'
+        + '"declined":false,"decline_reason":null,'
+        + '"chain_of_thought":"400-600 words: macro check, catalyst or technical entry, sector fit, risk/reward, adversarial challenge",'
+        + '"adversarial_response":"3 objections","reasoning":"100-150 word thesis",'
+        + '"key_risk":"biggest risk","regime_context":"' + (regime ? regime.label : 'unknown') + '",'
+        + '"date":"' + new Date().toISOString() + '"}';
+
+      return ai(sys, usr, 1800).then(function(raw2) {
+        if (!raw2) throw new Error('Empty deep dive response');
+        var pick = pj(raw2);
+        if (pick.confidence !== undefined && pick.confidence <= 1) {
+          pick.confidence = Math.round(pick.confidence * 100);
         }
-        pick.id = Date.now().toString();
-        pB.push(pick);
-        published++;
-        addLog('✓ ' + pick.ticker + ' @ $' + (pick.entry_price ? pick.entry_price.toFixed(2) : '?') + ' — ' + pick.confidence + '% conf');
-        completed++;
-        return gput(STUDY, 'portfolio_b.json', pB).then(function() {
-          renderB();
-          updateProgress();
-          setTimeout(genOne, 2000);
+        // Enforce 80% gate
+        if (!pick.declined && (pick.confidence || 0) < 80) {
+          pick.declined = true;
+          pick.decline_reason = 'Confidence ' + (pick.confidence || 0) + '% below 80% threshold';
+        }
+        // Final dupe check
+        var finalHeld = getAllHeld();
+        if (!pick.declined && finalHeld.indexOf(pick.ticker) >= 0) {
+          pick.declined = true;
+          pick.decline_reason = pick.ticker + ' already in Portfolio B';
+        }
+        if (pick.declined) {
+          declined++;
+          addLog('x Declined: ' + (pick.decline_reason || '').substring(0, 70));
+          pick.id = Date.now().toString();
+          pB.push(pick);
+          completed++;
+          return gput(STUDY, 'portfolio_b.json', pB).then(function() {
+            renderB(); updateBar(); setTimeout(runNext, 1500);
+          });
+        }
+        // Fetch real price
+        return getprice(pick.ticker).then(function(livePrice) {
+          if (livePrice) {
+            var se = pick.entry_price || 0;
+            pick.entry_price = livePrice;
+            if (se > 0) {
+              var tgt = pick.target_price ? Math.min(Math.max((pick.target_price - se) / se, 0.03), 0.20) : 0.08;
+              var stp = pick.stop_loss ? Math.min(Math.max((se - pick.stop_loss) / se, 0.02), 0.10) : 0.05;
+              pick.target_price = parseFloat((livePrice * (1 + tgt)).toFixed(2));
+              pick.stop_loss = parseFloat((livePrice * (1 - stp)).toFixed(2));
+            } else {
+              pick.target_price = parseFloat((livePrice * 1.08).toFixed(2));
+              pick.stop_loss = parseFloat((livePrice * 0.95).toFixed(2));
+            }
+            pick.price_source = 'finnhub_live';
+            pick.price_fetched_at = new Date().toISOString();
+          }
+          pick.id = Date.now().toString();
+          pB.push(pick);
+          sessionHeld.push(pick.ticker); // track in session
+          published++;
+          addLog('+ ' + pick.ticker + ' @ $' + (pick.entry_price ? pick.entry_price.toFixed(2) : '?') + ' — ' + pick.confidence + '% conf');
+          completed++;
+          return gput(STUDY, 'portfolio_b.json', pB).then(function() {
+            renderB(); updateBar(); setTimeout(runNext, 2000);
+          });
         });
       });
     }).catch(function(e) {
-      addLog('✕ Error: ' + e.message.substring(0, 60));
+      addLog('x Error: ' + e.message.substring(0, 70));
       completed++;
-      updateProgress();
-      setTimeout(genOne, 2000);
+      updateBar();
+      setTimeout(runNext, 1500);
     });
   }
-
-  genOne();
 });
 
 // ── COMPARE ──────────────────────────────────────────────
