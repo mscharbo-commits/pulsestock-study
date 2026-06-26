@@ -215,7 +215,7 @@ tbody td{padding:9px 12px;}
         <div class="ch"><div class="ct">Haiku Picks</div></div>
         <div id="a-load" class="empty"><div class="ei">⏳</div><div class="et">Loading…</div></div>
         <div class="tw" id="a-wrap" style="display:none">
-          <table><thead><tr><th>Ticker</th><th>Date</th><th>Action</th><th>Entry</th><th>Target</th><th>Stop</th><th>Status</th><th>Return</th></tr></thead>
+          <table><thead><tr><th>Ticker</th><th>Date</th><th>Action</th><th>Entry</th><th>Current</th><th>P&amp;L</th><th>Target</th><th>Stop</th><th>Status</th></tr></thead>
           <tbody id="a-body"></tbody></table>
         </div>
       </div>
@@ -508,14 +508,16 @@ function renderA(){
   document.getElementById('a-load').style.display='none';
   document.getElementById('a-wrap').style.display='block';
   var wins=0,tot=0,open=0,cld=0;
+  // Render rows immediately with entry prices
   var rows=pA.map(function(p){
     var ret=parseFloat(p.return_pct);
     var hr=!isNaN(ret);
     var st=p.status||(hr?'closed':'open');
     if(st==='open') open++; else{ cld++; if(hr){ tot+=ret; if(ret>0) wins++; } }
-    return '<tr><td class="tsym">'+p.ticker+'</td><td style="color:var(--t3)">'+fd(p.date)+'</td><td>'+badg(p.action)+'</td><td class="mono">'+fp(p.entry_price)+'</td><td class="mono">'+fp(p.target_price)+'</td><td class="mono">'+fp(p.stop_loss)+'</td><td><span class="badge b'+st+'">'+st+'</span></td><td>'+(hr?pnl(ret):'—')+'</td></tr>';
+    var ticker=p.ticker;
+    return '<tr id="arow-'+ticker+'"><td class="tsym">'+ticker+'</td><td style="color:var(--t3)">'+fd(p.date)+'</td><td>'+badg(p.action)+'</td><td class="mono">'+fp(p.entry_price)+'</td><td class="mono" id="aprice-'+ticker+'"><span style="color:var(--t3);font-size:11px">...</span></td><td id="apnl-'+ticker+'">—</td><td class="mono">'+fp(p.target_price)+'</td><td class="mono">'+fp(p.stop_loss)+'</td><td><span class="badge b'+st+'">'+st+'</span></td></tr>';
   });
-  document.getElementById('a-body').innerHTML=rows.join('')||'<tr><td colspan="8" class="empty" style="padding:24px">No picks found</td></tr>';
+  document.getElementById('a-body').innerHTML=rows.join('')||'<tr><td colspan="9" class="empty" style="padding:24px">No picks found</td></tr>';
   document.getElementById('a-tot').textContent=pA.length;
   document.getElementById('ba').textContent=pA.length;
   document.getElementById('a-op').textContent=open;
@@ -524,6 +526,25 @@ function renderA(){
     var we=document.getElementById('a-wr'); we.textContent=wr+'%'; we.className='sn '+(parseInt(wr)>=50?'ng':'nr');
     var ae=document.getElementById('a-ar'); ae.textContent=ar+'%'; ae.className='sn '+(parseFloat(ar)>=0?'ng':'nr');
   }
+  // Fetch live prices in background — batch to avoid rate limits
+  var openPositions=pA.filter(function(p){ return !p.return_pct; });
+  var idx=0;
+  function fetchNext(){
+    if(idx>=openPositions.length) return;
+    var p=openPositions[idx++];
+    getprice(p.ticker).then(function(price){
+      if(!price) return;
+      var priceEl=document.getElementById('aprice-'+p.ticker);
+      var pnlEl=document.getElementById('apnl-'+p.ticker);
+      if(priceEl) priceEl.textContent='$'+price.toFixed(2);
+      if(pnlEl&&p.entry_price){
+        var chg=((price-p.entry_price)/p.entry_price*100);
+        pnlEl.innerHTML=pnl(chg);
+      }
+      setTimeout(fetchNext,150);
+    }).catch(function(){ setTimeout(fetchNext,150); });
+  }
+  fetchNext();
 }
 
 // ── PORTFOLIO B ──────────────────────────────────────────
@@ -552,8 +573,23 @@ function renderB(){
   e.style.display='none';
   g.innerHTML=real.slice().reverse().map(function(p,i){
     var idx=real.length-1-i, conf=p.confidence||0;
-    return '<div class="pcard" onclick="openM('+idx+')"><div class="ptop"><div><div class="psym">'+p.ticker+'</div><div class="pdate">'+fd(p.date)+'</div></div><div style="text-align:right">'+badg(p.action||'BUY')+'<div style="margin-top:6px">'+(p.return_pct!==undefined?pnl(p.return_pct):'')+'</div></div></div><div class="preason">'+(p.reasoning||'').substring(0,150)+'</div><div class="prisk">⚠ '+(p.key_risk||'').substring(0,100)+'</div><div class="cbar"><div class="ctrack"><div class="cfill" style="width:'+conf+'%"></div></div><div class="cval">'+conf+'%</div></div></div>';
+    return '<div class="pcard" onclick="openM('+idx+')"><div class="ptop"><div><div class="psym">'+p.ticker+'</div><div class="pdate">'+fd(p.date)+'</div></div><div style="text-align:right">'+badg(p.action||'BUY')+'<div style="margin-top:6px" id="bpnl-'+p.ticker+'"><span style="font-size:11px;color:var(--t3)">loading…</span></div></div></div><div class="preason">'+(p.reasoning||'').substring(0,150)+'</div><div class="prisk">⚠ '+(p.key_risk||'').substring(0,100)+'</div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:11px;color:var(--t3)">Current: <span id="bprice-'+p.ticker+'" style="font-family:DM Mono,monospace;font-weight:700;color:var(--t)">—</span></span><span style="font-size:11px;color:var(--t3)">Entry: <span style="font-family:DM Mono,monospace;font-weight:700">'+fp(p.entry_price)+'</span></span></div><div class="cbar"><div class="ctrack"><div class="cfill" style="width:'+conf+'%"></div></div><div class="cval">'+conf+'%</div></div></div>';
   }).join('');
+  // Fetch live prices for all B picks
+  setTimeout(function(){
+    real.forEach(function(p){
+      getprice(p.ticker).then(function(price){
+        if(!price) return;
+        var priceEl=document.getElementById('bprice-'+p.ticker);
+        var pnlEl=document.getElementById('bpnl-'+p.ticker);
+        if(priceEl) priceEl.textContent='$'+price.toFixed(2);
+        if(pnlEl&&p.entry_price){
+          var chg=((price-p.entry_price)/p.entry_price*100);
+          pnlEl.innerHTML=pnl(chg);
+        }
+      }).catch(function(){});
+    });
+  },500);
 }
 function openM(idx){
   var real=pB.filter(function(p){ return !p.declined; }), p=real[idx]; if(!p) return;
