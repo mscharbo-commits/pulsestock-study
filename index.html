@@ -723,52 +723,39 @@ document.getElementById('genbtn').addEventListener('click', function() {
     var recentB = uniquePicked.slice(-8).join(', ') || 'none';
     var avoidStr = uniquePicked.length ? 'CRITICAL — do NOT pick any of these tickers, they are ALREADY IN THE PORTFOLIO: ' + uniquePicked.join(', ') + '. This is a hard rule. Picking a duplicate is an automatic DECLINE. ' : '';
 
-    var bJobs = [];
-    for (var i = 0; i < 10; i++) { bJobs.push(raw(DATA, 'batch_' + i + '.json')); }
+    // Step 1: cheap ticker nomination (~100 tokens) — Sonnet picks freely from entire market
+    var held = window._heldTickers || [];
+    var heldStr = held.length ? 'Already held (DO NOT pick these): ' + held.join(', ') + '.' : '';
+    var nomSys = 'You are a stock picking AI. Respond ONLY in valid JSON, no markdown.';
+    var nomUsr = 'Today: ' + new Date().toDateString() + '. ' + regStr + ' ' + heldStr + ' ' + rulesStr + ' Name ONE stock ticker you would pick with high conviction today that is NOT in the held list. Return ONLY: {"ticker":"SYMBOL","one_line_reason":"why this stock today"}';
 
-    Promise.all(bJobs).then(function(batches) {
-      var universe = [];
-      batches.forEach(function(b) { if (b && b.picks) universe = universe.concat(b.picks); });
+    ai(nomSys, nomUsr, 150).then(function(nomRaw) {
+      if (!nomRaw) throw new Error('Empty nomination response');
+      var nom;
+      try { nom = pj(nomRaw); } catch(e) { throw new Error('Nomination parse error'); }
+      var ticker = (nom.ticker || '').toUpperCase().trim();
 
-      // Pre-filter: remove held tickers BEFORE sending to Sonnet — saves credits
-      var held = window._heldTickers || [];
-      var candidates = universe.filter(function(p) {
-        return p.rating === 'BUY' &&
-               (p.confidence || 0) >= 65 &&
-               held.indexOf(p.sym) < 0;  // exclude already held
-      });
-
-      // If no candidates left, decline without calling AI
-      if (candidates.length === 0) {
-        completed++;
+      // Hard dupe check on nomination before spending full credits
+      if (!ticker) throw new Error('No ticker in nomination');
+      if (held.indexOf(ticker) >= 0) {
         declined++;
-        addLog('✕ No new candidates available — all top picks already held');
+        addLog('✕ Sonnet nominated ' + ticker + ' (already held) — skipping');
+        completed++;
         updateProgress();
         setTimeout(genOne, 500);
-        return Promise.resolve(null);
+        return;
       }
 
-      // Take top 15 candidates sorted by confidence
-      candidates.sort(function(a,b){ return (b.confidence||0)-(a.confidence||0); });
-      var top = candidates.slice(0, 15);
-      var ctx = top.map(function(p, i) { return (i+1)+'. '+p.sym+' ('+p.sector+'): conf='+p.confidence+'% - '+p.reason; }).join('
-');
+      addLog('→ Nominated: ' + ticker + ' — ' + (nom.one_line_reason || '').substring(0, 60));
 
-      var sys = 'You are Portfolio B — a high-conviction stock pick AI. Chain-of-thought reasoning + adversarial self-critique. 80% confidence threshold. Strictly follow all rules. Respond ONLY in valid JSON, no markdown.';
-      var usr = 'Today: ' + new Date().toDateString() + '.
-' + regStr + '
-' + rulesStr + '
+      // Step 2: full deep dive only on a new ticker
+      var sys = 'You are Portfolio B — a high-conviction stock pick AI. Chain-of-thought + adversarial self-critique. 80% confidence threshold. Strictly follow all rules. Respond ONLY in valid JSON, no markdown.';
+      var usr = 'Today: ' + new Date().toDateString() + '. ' + regStr + ' ' + rulesStr + ' Perform a FULL deep dive analysis on ' + ticker + '. Return JSON only:
+{"ticker":"' + ticker + '","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"sector name","timeframe":"short-term|medium-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"400-600 words: macro green-light check, dated catalyst within hold window, sector alignment, technical setup (price vs MAs, RSI, momentum), risk/reward, adversarial challenge — 3 reasons NOT to trade this, final conviction","adversarial_response":"3 strongest objections","reasoning":"100-150 word final thesis","key_risk":"single biggest risk 1-2 sentences","regime_context":"' + (regime ? regime.label : 'unknown') + '","date":"' + new Date().toISOString() + '"}';
 
-CANDIDATE STOCKS (pre-screened, all are available to pick — none are already held):
-' + ctx + '
-
-Select ONE from this list that best passes ALL rules. You may only pick from this list.
-Return JSON only:
-{"ticker":"SYMBOL","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"300-500 words: which candidate and why — macro alignment, catalyst check, technical setup, adversarial challenge, final conviction","adversarial_response":"2-3 strongest objections","reasoning":"75-100 word final thesis","key_risk":"biggest risk 1 sentence","regime_context":"' + (regime ? regime.label : 'unknown') + '","date":"' + new Date().toISOString() + '"}';
-
-      return ai(sys, usr, 1500);
+      return ai(sys, usr, 1800);
     }).then(function(raw2) {
-      if (raw2 === null) return; // skipped — no candidates
+      if (raw2 === undefined || raw2 === null) return; // already handled above
       if (!raw2) throw new Error('Empty response from AI');
       var pick = pj(raw2);
       if (pick.confidence !== undefined && pick.confidence <= 1) pick.confidence = Math.round(pick.confidence * 100);
