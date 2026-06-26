@@ -513,6 +513,8 @@ function renderA(){
 // ── PORTFOLIO B ──────────────────────────────────────────
 function loadB(){ return raw(STUDY,'portfolio_b.json').then(function(d){ pB=d||[]; renderB(); }); }
 function renderB(){
+  // Normalize any stored picks where confidence is decimal
+  pB.forEach(function(p){ if(p.confidence!==undefined&&p.confidence<=1) p.confidence=Math.round(p.confidence*100); });
   var real=pB.filter(function(p){ return !p.declined; });
   var dec=pB.filter(function(p){ return p.declined; }).length;
   var wins=0,tot=0,cld=0,hc=0;
@@ -581,10 +583,12 @@ document.getElementById('genbtn').addEventListener('click',function(){
     var ctx=buys.map(function(p){ return p.sym+' ('+p.sector+'): conf='+p.confidence+'% target=$'+p.target+' - '+p.reason; }).join(' | ')||'No batch data';
     var avoidStr = alreadyPicked.length ? 'ALREADY PICKED (do NOT repeat these tickers): '+alreadyPicked.join(', ')+'. ' : '';
     var sectorStr = overweightSectors.length ? 'OVERWEIGHT SECTORS (avoid adding more): '+overweightSectors.join(', ')+'. Diversify into other sectors. ' : '';
-    var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr+' '+avoidStr+sectorStr+'Haiku top buys: '+ctx+'. Pick the single BEST trade that is NOT already in the portfolio. Must be a DIFFERENT ticker and ideally a DIFFERENT sector than existing picks. Prioritize: growth sectors (Technology, Financials, Industrials, Consumer Discretionary) over defensives unless regime specifically favors defensives. Return JSON only, no markdown, no code block: {"ticker":"SYMBOL","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"sector name","timeframe":"short-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"400-600 words: macro environment, why this SECTOR specifically, why this STOCK specifically, technical setup (price vs MAs, RSI, momentum), fundamental catalyst, risk/reward, adversarial challenge, final conviction","adversarial_response":"3 strongest reasons against this trade","reasoning":"100-150 word final thesis","key_risk":"1-2 sentence biggest risk","regime_context":"'+(regime?regime.label:'unknown')+'","date":"'+new Date().toISOString()+'"}';
+    var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr+' '+avoidStr+sectorStr+'Haiku top buys: '+ctx+'. Pick the single BEST trade that is NOT already in the portfolio. Must be a DIFFERENT ticker and ideally a DIFFERENT sector than existing picks. Prioritize: growth sectors (Technology, Financials, Industrials, Consumer Discretionary) over defensives unless regime specifically favors defensives. IMPORTANT: confidence must be an INTEGER between 0 and 100 (e.g. 82, not 0.82). Return JSON only, no markdown, no code block: {"ticker":"SYMBOL","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"sector name","timeframe":"short-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"400-600 words: macro environment, why this SECTOR specifically, why this STOCK specifically, technical setup (price vs MAs, RSI, momentum), fundamental catalyst, risk/reward, adversarial challenge, final conviction","adversarial_response":"3 strongest reasons against this trade","reasoning":"100-150 word final thesis","key_risk":"1-2 sentence biggest risk","regime_context":"'+(regime?regime.label:'unknown')+'","date":"'+new Date().toISOString()+'"}';
     return ai(sys,usr,2000);
   }).then(function(raw2){
     var pick=pj(raw2);
+    // Normalize confidence: Sonnet sometimes returns 0.82 instead of 82
+    if(pick.confidence!==undefined&&pick.confidence<=1) pick.confidence=Math.round(pick.confidence*100);
     pick.id=Date.now().toString();
     pB.push(pick);
     return gput(STUDY,'portfolio_b.json',pB).then(function(){ renderB(); toast(pick.declined?'⚠ Declined: '+(pick.decline_reason||'').substring(0,60):'✦ '+pick.ticker+' — '+pick.confidence+'% confidence'); });
@@ -596,6 +600,8 @@ document.getElementById('genbtn').addEventListener('click',function(){
 function renderCmp(){
   var amap={};
   pA.forEach(function(p){ if(p.ticker) amap[p.ticker]=p; });
+  // Normalize any stored picks where confidence is decimal
+  pB.forEach(function(p){ if(p.confidence!==undefined&&p.confidence<=1) p.confidence=Math.round(p.confidence*100); });
   var real=pB.filter(function(p){ return !p.declined; });
   var divs=real.filter(function(p){ var a=amap[p.ticker]; return a&&a.action&&p.action&&a.action!==p.action; });
   document.getElementById('divs').innerHTML=divs.length?'<div class="slabel" style="margin-top:0">⚡ Divergences</div>'+divs.map(function(p){ var a=amap[p.ticker]; return '<div class="divrow">⚡ <strong>'+p.ticker+'</strong> — A: '+badg(a.action)+' · B: '+badg(p.action)+' ('+p.confidence+'% conf)</div>'; }).join(''):'';
