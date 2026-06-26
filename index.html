@@ -679,10 +679,38 @@ document.getElementById('genbtn').addEventListener('click',function(){
       pick.declined=true;
       pick.decline_reason='Duplicate ticker '+pick.ticker+' already in portfolio. System rejected.';
       toast('⚠ Sonnet picked '+pick.ticker+' again — rejected as duplicate');
+      pick.id=Date.now().toString();
+      pB.push(pick);
+      return gput(STUDY,'portfolio_b.json',pB).then(function(){ renderB(); });
     }
-    pick.id=Date.now().toString();
-    pB.push(pick);
-    return gput(STUDY,'portfolio_b.json',pB).then(function(){ renderB(); toast(pick.declined?'⚠ Declined: '+(pick.decline_reason||'').substring(0,60):'✦ '+pick.ticker+' — '+pick.confidence+'% confidence'); });
+    // Fetch REAL current price from Finnhub — override Sonnet's stale training data price
+    return getprice(pick.ticker).then(function(livePrice){
+      if(livePrice && !pick.declined){
+        var sonetEntry = pick.entry_price || 0;
+        pick.entry_price = livePrice;
+        // Recalculate target and stop based on real price using same % as Sonnet intended
+        if(sonetEntry > 0){
+          var targetPct = pick.target_price ? ((pick.target_price - sonetEntry) / sonetEntry) : 0.08;
+          var stopPct   = pick.stop_loss   ? ((sonetEntry - pick.stop_loss) / sonetEntry)   : 0.05;
+          pick.target_price = parseFloat((livePrice * (1 + targetPct)).toFixed(2));
+          pick.stop_loss    = parseFloat((livePrice * (1 - stopPct)).toFixed(2));
+        } else {
+          // Sonnet gave no entry — use sensible defaults
+          pick.target_price = parseFloat((livePrice * 1.08).toFixed(2));
+          pick.stop_loss    = parseFloat((livePrice * 0.95).toFixed(2));
+        }
+        pick.price_source = 'finnhub_live';
+        pick.price_fetched_at = new Date().toISOString();
+      }
+      pick.id = Date.now().toString();
+      pB.push(pick);
+      return gput(STUDY,'portfolio_b.json',pB).then(function(){
+        renderB();
+        toast(pick.declined
+          ? '⚠ Declined: '+(pick.decline_reason||'').substring(0,60)
+          : '✦ '+pick.ticker+' @ $'+pick.entry_price.toFixed(2)+' — '+pick.confidence+'% confidence');
+      });
+    });
   }).catch(function(e){ toast('Error: '+e.message); console.error(e); })
   .then(function(){ btn.disabled=false; btn.classList.remove('loading'); });
 });
