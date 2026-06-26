@@ -580,16 +580,19 @@ function loadPortfolioA() {
   });
 }
 function normTrade(t, src) {
-  return {ticker:t.sym||t.ticker||'?', action:(t.rating||t.action||'HOLD').toUpperCase(),
-    entry_price:t.entryPrice||t.entry_price, target_price:t.targetPrice||t.target_price,
-    stop_loss:t.stopPrice||t.stop_loss, status:t.status||'open',
-    return_pct:t.pnlPct||t.return_pct, date:t.entryDate||t.date, name:t.name||'', _src:src};
+  var pnl = t.pnlPct !== undefined ? t.pnlPct : undefined;
+  return {ticker:t.sym||'?', name:t.name||'', sector:t.sector||'',
+    action:(t.side==='long'?'BUY':t.side==='short'?'SELL':'BUY').toUpperCase(),
+    entry_price:t.entryPrice, target_price:t.targetPrice, stop_loss:t.stopPrice,
+    status:t.status||'open', return_pct:pnl, date:t.entryDate,
+    reason:t.reason||'', confidence:t.confidence, maxHoldDays:t.maxHoldDays, _src:src};
 }
 function normBatch(p) {
-  return {ticker:p.sym||p.ticker||'?', action:(p.rating||p.action||'WATCH').toUpperCase(),
-    entry_price:p.priceAtPick||p.entryPrice||p.price, target_price:p.targetPrice||p.target,
-    stop_loss:p.stopPrice||p.stop_loss, status:p.status||'open',
-    return_pct:p.pnlPct||p.return_pct, date:p.entryDate||p.date, name:p.name||'', _src:'batch'};
+  return {ticker:p.sym||'?', name:p.name||'', sector:p.sector||'',
+    action:(p.rating||'WATCH').toUpperCase(),
+    entry_price:p.priceAtPick||p.price, target_price:p.target, stop_loss:null,
+    status:'open', return_pct:undefined, date:p.timestamp||p.date,
+    reason:p.reason||'', confidence:p.confidence, _src:'batch'};
 }
 function renderA() {
   document.getElementById('a-loading').style.display = 'none';
@@ -1033,6 +1036,63 @@ function renderDailyHistory() {
       +(d.watches?'<span class="badge b-hold">⚠ '+d.watches+' Watch</span>':'')
       +(d.exits?'<span class="badge b-loss">🚨 '+d.exits+' Exit</span>':'')
       +'</div></div>'; }).join('');
+}
+
+
+// ─── POSITION DETAIL ───────────────────────────────────
+function showPositionDetail(sym, entry, stop, target, name, sector, reason, confidence) {
+  var price = priceCache[sym] ? priceCache[sym].p : null;
+  var pnl = price&&entry ? ((price-entry)/entry*100) : null;
+  var stopPct = price&&stop&&stop>0 ? ((price-stop)/stop*100) : null;
+  var targPct = price&&target ? ((target-price)/price*100) : null;
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.onclick = function(e){ if(e.target===overlay) document.body.removeChild(overlay); };
+  overlay.innerHTML = '<div style="background:#fff;border-radius:14px;padding:28px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">'
+    +'<div style="font-size:24px;font-weight:800;font-family:DM Mono,monospace">'+sym+'</div>'
+    +'<div style="cursor:pointer;font-size:22px;color:#8A95A3;line-height:1" onclick="document.body.removeChild(this.closest('[style*=fixed]'))">✕</div></div>'
+    +(name?'<div style="font-size:13px;color:#4A5568;margin-bottom:16px">'+name+(sector?' · '+sector:'')+'</div>':'<div style="margin-bottom:16px"></div>')
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">'
+    +'<div style="background:#F8F9FB;border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;font-weight:700;color:#8A95A3;text-transform:uppercase;margin-bottom:4px">Entry</div><div style="font-size:15px;font-weight:700;font-family:DM Mono,monospace">$'+( entry?entry.toFixed(2):'—')+'</div></div>'
+    +'<div style="background:#F8F9FB;border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;font-weight:700;color:#8A95A3;text-transform:uppercase;margin-bottom:4px">Current</div><div style="font-size:15px;font-weight:700;font-family:DM Mono,monospace;color:'+(pnl!==null?(pnl>=0?'var(--green)':'var(--red)'):'#0D1117')+'">'+(price?'$'+price.toFixed(2):'—')+'</div></div>'
+    +'<div style="background:#F8F9FB;border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;font-weight:700;color:#8A95A3;text-transform:uppercase;margin-bottom:4px">P&L</div><div style="font-size:15px;font-weight:700;font-family:DM Mono,monospace;color:'+(pnl!==null?(pnl>=0?'var(--green)':'var(--red)'):'#8A95A3')+'">'+(pnl!==null?(pnl>=0?'+':'')+pnl.toFixed(2)+'%':'—')+'</div></div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">'
+    +'<div style="background:#F8F9FB;border-radius:8px;padding:10px"><div style="font-size:10px;font-weight:700;color:#8A95A3;text-transform:uppercase;margin-bottom:4px">Stop Cushion</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:'+(stopPct!==null?(stopPct<5?'var(--red)':stopPct<15?'var(--amber)':'var(--green)'):'#8A95A3')+'">'+(stopPct!==null?stopPct.toFixed(1)+'% above stop':'No stop set')+'</div></div>'
+    +'<div style="background:#F8F9FB;border-radius:8px;padding:10px"><div style="font-size:10px;font-weight:700;color:#8A95A3;text-transform:uppercase;margin-bottom:4px">To Target</div><div style="font-size:14px;font-weight:700;font-family:DM Mono,monospace;color:var(--green)">'+(targPct!==null?targPct.toFixed(1)+'% upside':'No target set')+'</div></div>'
+    +'</div>'
+    +(reason?'<div style="font-size:11px;font-weight:700;color:#8A95A3;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Original Thesis</div><div style="font-size:13px;color:#4A5568;line-height:1.7;margin-bottom:16px;background:#F8F9FB;border-radius:8px;padding:12px">'+reason+'</div>':'')
+    +'<button id="pos-triage-btn" style="width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">🔬 Run AI Triage on This Position</button>'
+    +'<div id="pos-triage-result" style="margin-top:12px;font-size:12px;color:#4A5568;line-height:1.7"></div>'
+    +'</div>';
+  document.body.appendChild(overlay);
+  overlay.querySelector('#pos-triage-btn').onclick = function() {
+    var btn = this; btn.textContent='Analyzing…'; btn.disabled=true;
+    var regime = regimeLog.current_regime;
+    aiCall('You are a trade triage analyst. Give a clear HOLD/REDUCE/EXIT recommendation with specific price levels. Respond ONLY in JSON.',
+      'Position: '+sym+'
+Entry: $'+(entry?entry.toFixed(2):'?')+' | Current: '+(price?'$'+price.toFixed(2):'unknown')+' | P&L: '+(pnl?pnl.toFixed(2)+'%':'?')+'
+Stop cushion: '+(stopPct?stopPct.toFixed(1)+'%':'unknown')+' | Target upside: '+(targPct?targPct.toFixed(1)+'%':'unknown')+'
+Original thesis: '+(reason||'not recorded')+'
+Market regime: '+(regime?regime.label+' - '+regime.description:'unknown')+'
+
+Respond:
+{"recommendation":"HOLD|REDUCE|EXIT","confidence_in_call":0,"assessment":"2-3 sentences - is the thesis still playing out? Is the stock behaving as expected?","action":"Specific action to take today","watch_level":"The exact price that changes your view","catalyst_to_watch":"What news or event could invalidate or confirm the trade?"}', 700)
+    .then(function(raw){
+      var r; try{ r=parseJ(raw); }catch(e){ r={recommendation:'WATCH',assessment:'Parse error: '+raw.substring(0,100),action:'Review manually',watch_level:'—',catalyst_to_watch:'—'}; }
+      var col = r.recommendation==='EXIT'?'var(--red)':r.recommendation==='REDUCE'?'var(--amber)':'var(--green)';
+      document.getElementById('pos-triage-result').innerHTML =
+        '<div style="border-top:1px solid #E2E6ED;padding-top:12px;margin-top:4px">'
+        +'<div style="font-size:16px;font-weight:700;color:'+col+';margin-bottom:8px">'+r.recommendation+(r.confidence_in_call?' <span style="font-size:12px;color:#8A95A3">('+r.confidence_in_call+'% confidence)</span>':'')+'</div>'
+        +'<div style="margin-bottom:8px">'+r.assessment+'</div>'
+        +'<div style="font-weight:600;margin-bottom:4px">Action: <span style="font-weight:400">'+r.action+'</span></div>'
+        +'<div style="color:var(--amber);margin-bottom:4px">👁 Watch: '+r.watch_level+'</div>'
+        +(r.catalyst_to_watch?'<div style="color:#4A5568">📰 Catalyst: '+r.catalyst_to_watch+'</div>':'')
+        +'</div>';
+      btn.style.display='none';
+    }).catch(function(e){ document.getElementById('pos-triage-result').textContent='Error: '+e.message; btn.textContent='Retry'; btn.disabled=false; });
+  };
 }
 
 // ═══ INIT ═══
