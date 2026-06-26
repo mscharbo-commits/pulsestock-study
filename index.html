@@ -1074,15 +1074,8 @@ function showPositionDetail(sym, entry, stop, target, name, sector, reason, conf
   overlay.querySelector('#pos-triage-btn').onclick = function() {
     var btn = this; btn.textContent='Analyzing…'; btn.disabled=true;
     var regime = regimeLog.current_regime;
-    aiCall('You are a trade triage analyst. Give a clear HOLD/REDUCE/EXIT recommendation with specific price levels. Respond ONLY in JSON.',
-      'Position: '+sym+'
-Entry: $'+(entry?entry.toFixed(2):'?')+' | Current: '+(price?'$'+price.toFixed(2):'unknown')+' | P&L: '+(pnl?pnl.toFixed(2)+'%':'?')+'
-Stop cushion: '+(stopPct?stopPct.toFixed(1)+'%':'unknown')+' | Target upside: '+(targPct?targPct.toFixed(1)+'%':'unknown')+'
-Original thesis: '+(reason||'not recorded')+'
-Market regime: '+(regime?regime.label+' - '+regime.description:'unknown')+'
-
-Respond:
-{"recommendation":"HOLD|REDUCE|EXIT","confidence_in_call":0,"assessment":"2-3 sentences - is the thesis still playing out? Is the stock behaving as expected?","action":"Specific action to take today","watch_level":"The exact price that changes your view","catalyst_to_watch":"What news or event could invalidate or confirm the trade?"}', 700)
+    aiCall('You are a trade triage analyst. Give clear HOLD/REDUCE/EXIT recommendation. Respond ONLY in JSON.',
+      'Sym: '+sym+' | Entry: $'+(entry?entry.toFixed(2):'?')+' | Now: '+(price?'$'+price.toFixed(2):'?')+' | PnL: '+(pnl?pnl.toFixed(2)+'%':'?')+'\nStop cushion: '+(stopPct?stopPct.toFixed(1)+'%':'?')+' | To target: '+(targPct?targPct.toFixed(1)+'%':'?')+'\nThesis: '+(reason||'none')+'\nRegime: '+(regime?regime.label:'unknown')+'\nReturn JSON: {recommendation, confidence_in_call, assessment, action, watch_level, catalyst_to_watch}', 700)
     .then(function(raw){
       var r; try{ r=parseJ(raw); }catch(e){ r={recommendation:'WATCH',assessment:'Parse error: '+raw.substring(0,100),action:'Review manually',watch_level:'—',catalyst_to_watch:'—'}; }
       var col = r.recommendation==='EXIT'?'var(--red)':r.recommendation==='REDUCE'?'var(--amber)':'var(--green)';
