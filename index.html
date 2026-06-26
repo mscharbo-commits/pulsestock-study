@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
+<!-- v20260626155931 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -430,6 +431,11 @@ tbody td{padding:9px 12px;}
 <div id="toast"></div>
 
 <script>
+window.onerror = function(msg, src, line, col, err) {
+  document.body.style.cssText = 'display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff;font-family:monospace;padding:20px';
+  document.body.innerHTML = '<div style="max-width:700px"><h2 style="color:#c00;margin-bottom:12px">JS Error on Line ' + line + '</h2><p style="margin-bottom:8px"><b>Message:</b> ' + msg + '</p><p style="margin-bottom:8px"><b>Source:</b> ' + src + '</p><p><b>Stack:</b> ' + (err && err.stack ? err.stack.replace(/\n/g,"<br>") : "none") + "</p></div>";
+  return true;
+};
 var GH  = 'ghp_SdaFPdpP720' + '5qDi9C6vMGLl8K' + 'fKV1p39Nq3a';
 // AK removed — calls proxied through /api/claude (key lives in Vercel env vars)
 var FHK = 'd8fhh6hr01qn443a0bngd8fhh6hr01qn443a0bo0';
