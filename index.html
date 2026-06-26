@@ -724,19 +724,51 @@ document.getElementById('genbtn').addEventListener('click', function() {
     var avoidStr = uniquePicked.length ? 'CRITICAL — do NOT pick any of these tickers, they are ALREADY IN THE PORTFOLIO: ' + uniquePicked.join(', ') + '. This is a hard rule. Picking a duplicate is an automatic DECLINE. ' : '';
 
     var bJobs = [];
-    for (var i = 0; i < 5; i++) { bJobs.push(raw(DATA, 'batch_' + i + '.json')); }
+    for (var i = 0; i < 10; i++) { bJobs.push(raw(DATA, 'batch_' + i + '.json')); }
 
     Promise.all(bJobs).then(function(batches) {
       var universe = [];
       batches.forEach(function(b) { if (b && b.picks) universe = universe.concat(b.picks); });
-      var buys = universe.filter(function(p) { return p.rating === 'BUY' && (p.confidence || 0) >= 65; }).slice(0, 10);
-      var ctx = buys.map(function(p) { return p.sym + ' (' + p.sector + '): conf=' + p.confidence + '% target=$' + p.target + ' - ' + p.reason; }).join(' | ') || 'No batch data';
 
-      var sys = 'You are Portfolio B — a high-conviction stock pick AI. You apply chain-of-thought reasoning and adversarial self-critique. Your confidence threshold is 80%. You strictly follow all provided rules. Respond ONLY in valid JSON with no markdown.';
-      var usr = 'Today: ' + new Date().toDateString() + '. ' + regStr + ' ' + rulesStr + ' ' + avoidStr + 'Haiku top buys for context: ' + ctx + '. Pick ONE stock that passes ALL rules. Return JSON only, no markdown: {"ticker":"SYMBOL","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"400-600 words: macro green-light check (VIX/sector ETF/SPX), catalyst verification within hold window, sector alignment, technical setup, adversarial challenge, final conviction","adversarial_response":"3 strongest objections","reasoning":"100-150 word final thesis","key_risk":"biggest risk 1-2 sentences","regime_context":"' + (regime ? regime.label : 'unknown') + '","date":"' + new Date().toISOString() + '"}';
+      // Pre-filter: remove held tickers BEFORE sending to Sonnet — saves credits
+      var held = window._heldTickers || [];
+      var candidates = universe.filter(function(p) {
+        return p.rating === 'BUY' &&
+               (p.confidence || 0) >= 65 &&
+               held.indexOf(p.sym) < 0;  // exclude already held
+      });
 
-      return ai(sys, usr, 2000);
+      // If no candidates left, decline without calling AI
+      if (candidates.length === 0) {
+        completed++;
+        declined++;
+        addLog('✕ No new candidates available — all top picks already held');
+        updateProgress();
+        setTimeout(genOne, 500);
+        return Promise.resolve(null);
+      }
+
+      // Take top 15 candidates sorted by confidence
+      candidates.sort(function(a,b){ return (b.confidence||0)-(a.confidence||0); });
+      var top = candidates.slice(0, 15);
+      var ctx = top.map(function(p, i) { return (i+1)+'. '+p.sym+' ('+p.sector+'): conf='+p.confidence+'% - '+p.reason; }).join('
+');
+
+      var sys = 'You are Portfolio B — a high-conviction stock pick AI. Chain-of-thought reasoning + adversarial self-critique. 80% confidence threshold. Strictly follow all rules. Respond ONLY in valid JSON, no markdown.';
+      var usr = 'Today: ' + new Date().toDateString() + '.
+' + regStr + '
+' + rulesStr + '
+
+CANDIDATE STOCKS (pre-screened, all are available to pick — none are already held):
+' + ctx + '
+
+Select ONE from this list that best passes ALL rules. You may only pick from this list.
+Return JSON only:
+{"ticker":"SYMBOL","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"300-500 words: which candidate and why — macro alignment, catalyst check, technical setup, adversarial challenge, final conviction","adversarial_response":"2-3 strongest objections","reasoning":"75-100 word final thesis","key_risk":"biggest risk 1 sentence","regime_context":"' + (regime ? regime.label : 'unknown') + '","date":"' + new Date().toISOString() + '"}';
+
+      return ai(sys, usr, 1500);
     }).then(function(raw2) {
+      if (raw2 === null) return; // skipped — no candidates
       if (!raw2) throw new Error('Empty response from AI');
       var pick = pj(raw2);
       if (pick.confidence !== undefined && pick.confidence <= 1) pick.confidence = Math.round(pick.confidence * 100);
