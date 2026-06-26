@@ -235,10 +235,28 @@ tbody td{padding:9px 12px;}
       <div class="ibox"><strong>Portfolio B — Sonnet 4.6.</strong> Chain-of-thought + adversarial critique + 80% confidence gate. Strategy memory and regime injected into every pick.</div>
       <div class="card">
         <div class="ch">
-          <div class="ct">Generate Pick — Sonnet · 80% Gate</div>
-          <button class="btnp" id="genbtn"><span class="spin"></span>✦ Generate Pick</button>
+          <div class="ct">Generate Picks — Sonnet · 80% Gate</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="pick-count" style="padding:7px 10px;border:1.5px solid var(--b);border-radius:7px;font-size:13px;font-family:inherit;outline:none;background:#fff;color:var(--t)">
+              <option value="1">1 pick</option>
+              <option value="3">3 picks</option>
+              <option value="5" selected>5 picks</option>
+              <option value="10">10 picks</option>
+            </select>
+            <button class="btnp" id="genbtn"><span class="spin"></span>✦ Generate</button>
+          </div>
         </div>
-        <div style="padding:10px 16px;font-size:12px;color:var(--t3)">Sonnet 4.6 · Chain-of-thought · Adversarial critique · Strategy memory · Market regime</div>
+        <div style="padding:10px 16px;font-size:12px;color:var(--t3)">Sonnet 4.6 · Chain-of-thought · Adversarial critique · Strategy memory · Market regime · Real Finnhub prices</div>
+        <div id="gen-progress" style="display:none;padding:10px 16px;border-top:1px solid var(--b)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:12px;font-weight:600;color:var(--t2)" id="gen-status">Generating…</span>
+            <span style="font-size:12px;color:var(--t3)" id="gen-count"></span>
+          </div>
+          <div style="background:#EEF2F7;border-radius:4px;height:6px">
+            <div id="gen-bar" style="background:var(--p);height:100%;border-radius:4px;width:0%;transition:width .4s"></div>
+          </div>
+          <div id="gen-log" style="margin-top:8px;font-size:11px;color:var(--t3);font-family:DM Mono,monospace;line-height:1.8;max-height:80px;overflow-y:auto"></div>
+        </div>
       </div>
       <div class="pgrid" id="b-grid"></div>
       <div id="b-empty" class="empty"><div class="ei">🧪</div><div class="et">No Portfolio B picks yet</div><div class="es">Generate your first pick above</div></div>
@@ -640,7 +658,30 @@ function closeM(){ document.getElementById('modal').classList.remove('on'); }
 
 // Generate B pick
 document.getElementById('genbtn').addEventListener('click',function(){
+  var total=parseInt(document.getElementById('pick-count').value)||1;
   var btn=this; btn.disabled=true; btn.classList.add('loading');
+  var progress=document.getElementById('gen-progress');
+  var statusEl=document.getElementById('gen-status');
+  var countEl=document.getElementById('gen-count');
+  var barEl=document.getElementById('gen-bar');
+  var logEl=document.getElementById('gen-log');
+  progress.style.display='block'; logEl.innerHTML='';
+  var completed=0, published=0, declined=0;
+
+  function addLog(msg){ logEl.innerHTML=msg+'<br>'+logEl.innerHTML; }
+  function updateProgress(){
+    barEl.style.width=((completed/total)*100)+'%';
+    countEl.textContent=completed+'/'+total;
+    statusEl.textContent=completed<total?'Generating pick '+(completed+1)+' of '+total+'…':'Done — '+published+' published, '+declined+' declined';
+  }
+
+  function genOne(){
+    if(completed>=total){
+      btn.disabled=false; btn.classList.remove('loading');
+      toast('✦ Batch complete: '+published+' picks published, '+declined+' declined');
+      return;
+    }
+    updateProgress();
   var rules=mem.rules||[], regime=reg.current_regime;
   var regStr=regime?'REGIME: '+regime.label+' — '+regime.guidance:'Regime: unknown.';
   var rulesStr=rules.length?'LEARNED RULES: '+rules.join('; '):'No learned rules yet.';
@@ -681,7 +722,14 @@ document.getElementById('genbtn').addEventListener('click',function(){
       toast('⚠ Sonnet picked '+pick.ticker+' again — rejected as duplicate');
       pick.id=Date.now().toString();
       pB.push(pick);
-      return gput(STUDY,'portfolio_b.json',pB).then(function(){ renderB(); });
+      return gput(STUDY,'portfolio_b.json',pB).then(function(){
+        renderB();
+        declined++;
+        addLog('✕ Duplicate: '+pick.ticker+' already in portfolio');
+        completed++;
+        updateProgress();
+        setTimeout(genOne, 1000);
+      });
     }
     // Fetch REAL current price from Finnhub — override Sonnet's stale training data price
     return getprice(pick.ticker).then(function(livePrice){
@@ -706,9 +754,17 @@ document.getElementById('genbtn').addEventListener('click',function(){
       pB.push(pick);
       return gput(STUDY,'portfolio_b.json',pB).then(function(){
         renderB();
-        toast(pick.declined
-          ? '⚠ Declined: '+(pick.decline_reason||'').substring(0,60)
-          : '✦ '+pick.ticker+' @ $'+pick.entry_price.toFixed(2)+' — '+pick.confidence+'% confidence');
+        if(pick.declined){
+          declined++;
+          addLog('✕ Declined: '+(pick.decline_reason||'').substring(0,50));
+        } else {
+          published++;
+          addLog('✓ '+pick.ticker+' @ $'+pick.entry_price.toFixed(2)+' — '+pick.confidence+'% conf');
+        }
+        completed++;
+        updateProgress();
+        // Small delay between picks to avoid rate limits
+        setTimeout(genOne, 2000);
       });
     });
   }).catch(function(e){ toast('Error: '+e.message); console.error(e); })
