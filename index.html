@@ -700,11 +700,18 @@ document.getElementById('genbtn').addEventListener('click', function() {
     }
     updateProgress();
 
-    // Reload pB fresh from GitHub before each pick to get accurate held tickers
+    // Reload pB fresh from GitHub — this is the source of truth
     raw(STUDY, 'portfolio_b.json').then(function(fresh) {
-      if (fresh) pB = fresh;
+      if (fresh) {
+        pB = fresh;
+      }
+      // Build definitive list of held tickers from GitHub data
+      window._heldTickers = pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; }).filter(function(t,i,a){ return a.indexOf(t)===i; });
       genOnePick();
-    }).catch(function() { genOnePick(); });
+    }).catch(function() {
+      window._heldTickers = pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; }).filter(function(t,i,a){ return a.indexOf(t)===i; });
+      genOnePick();
+    });
   }
 
   function genOnePick() {
@@ -712,10 +719,9 @@ document.getElementById('genbtn').addEventListener('click', function() {
     var regime = reg.current_regime;
     var regStr = regime ? 'REGIME: ' + regime.label + ' — ' + regime.guidance : 'Regime: unknown.';
     var rulesStr = rules.length ? 'IMPORTANT RULES (ALL must be followed): ' + rules.map(function(r, i) { return (i+1)+'. '+r; }).join(' | ') : 'No learned rules yet.';
-    var existingTickers = pB.filter(function(p) { return !p.declined; }).map(function(p) { return p.ticker; });
-    var uniquePicked = existingTickers.filter(function(t, i) { return existingTickers.indexOf(t) === i; });
+    var uniquePicked = window._heldTickers || pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; }).filter(function(t,i,a){ return a.indexOf(t)===i; });
     var recentB = uniquePicked.slice(-8).join(', ') || 'none';
-    var avoidStr = uniquePicked.length ? 'CRITICAL — do NOT pick any of these already-held tickers: ' + uniquePicked.join(', ') + '. Picking any of these is an automatic failure. ' : '';
+    var avoidStr = uniquePicked.length ? 'CRITICAL — do NOT pick any of these tickers, they are ALREADY IN THE PORTFOLIO: ' + uniquePicked.join(', ') + '. This is a hard rule. Picking a duplicate is an automatic DECLINE. ' : '';
 
     var bJobs = [];
     for (var i = 0; i < 5; i++) { bJobs.push(raw(DATA, 'batch_' + i + '.json')); }
@@ -734,10 +740,10 @@ document.getElementById('genbtn').addEventListener('click', function() {
       if (!raw2) throw new Error('Empty response from AI');
       var pick = pj(raw2);
       if (pick.confidence !== undefined && pick.confidence <= 1) pick.confidence = Math.round(pick.confidence * 100);
-      var existNow = pB.filter(function(p) { return !p.declined; }).map(function(p) { return p.ticker; });
+      var existNow = window._heldTickers || pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; });
       if (pick.ticker && existNow.indexOf(pick.ticker) >= 0 && !pick.declined) {
         pick.declined = true;
-        pick.decline_reason = 'Duplicate: ' + pick.ticker + ' already in portfolio';
+        pick.decline_reason = pick.ticker + ' is already in Portfolio B';
       }
       if (pick.declined) {
         pick.id = Date.now().toString();
