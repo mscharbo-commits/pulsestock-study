@@ -273,6 +273,7 @@ tbody td{padding:9px 12px;}
   <div class="panel" id="panel-critic">
     <div class="content">
       <div class="ibox"><strong>Critic AI.</strong> Level 1: postmortems on closed trades. Level 2: mistake clusters become rules injected into future picks.</div>
+      <div id="closed-trades-summary"></div>
       <div class="slabel">Mistake Clusters</div>
       <div class="card">
         <div class="ch"><div class="ct">Recurring Failure Patterns</div><button class="btn2" id="clusterbtn"><span class="spin"></span>Find Patterns</button></div>
@@ -674,8 +675,27 @@ function renderCmp(){
 }
 
 // ── CRITIC ───────────────────────────────────────────────
+var closedTrades=[];
 function loadCritic(){
-  return Promise.all([raw(STUDY,'critiques.json').then(function(d){ crits=d||[]; }),raw(STUDY,'mistake_clusters.json').then(function(d){ clus=d||[]; })]).then(function(){ renderCrits(); renderClus(); });
+  return Promise.all([
+    raw(STUDY,'critiques.json').then(function(d){ crits=d||[]; }),
+    raw(STUDY,'mistake_clusters.json').then(function(d){ clus=d||[]; }),
+    raw(STUDY,'closed_trades.json').then(function(d){ closedTrades=d||[]; })
+  ]).then(function(){ renderCrits(); renderClus(); renderClosedTrades(); });
+}
+
+function renderClosedTrades(){
+  // Show closed trades summary at top of critic tab
+  var el=document.getElementById('closed-trades-summary');
+  if(!el||!closedTrades.length) return;
+  var wins=closedTrades.filter(function(t){ return t.return_pct>0; }).length;
+  var losses=closedTrades.filter(function(t){ return t.return_pct<=0; }).length;
+  var avg=closedTrades.reduce(function(a,t){ return a+t.return_pct; },0)/closedTrades.length;
+  // Sector breakdown
+  var sectors={};
+  closedTrades.forEach(function(t){ var s=t.sector; sectors[s]=(sectors[s]||[]); sectors[s].push(t.return_pct); });
+  var sectorHtml=Object.keys(sectors).map(function(s){ var avg2=sectors[s].reduce(function(a,b){ return a+b; },0)/sectors[s].length; return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b)"><span style="font-size:12px">'+s+' ('+sectors[s].length+' trades)</span><span style="font-family:DM Mono,monospace;font-size:12px;font-weight:700;color:'+(avg2>=0?'var(--g)':'var(--r)')+'">'+( avg2>=0?'+':'')+avg2.toFixed(1)+'%</span></div>'; }).join('');
+  el.innerHTML='<div class="card" style="margin-bottom:14px"><div class="ch"><div class="ct">Closed Trades — '+closedTrades.length+' Stop Hits</div><div style="font-size:13px;font-weight:700;color:var(--r)">Avg: '+avg.toFixed(2)+'% · '+wins+' wins · '+losses+' losses</div></div><div class="cb"><div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">By Sector</div>'+sectorHtml+'</div><div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;margin-top:12px">All Closed Trades</div>'+closedTrades.map(function(t){ return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--b)"><div><span class="tsym" style="font-size:13px">'+t.ticker+'</span> <span style="font-size:11px;color:var(--t3)">'+t.portfolio+' · '+t.sector+'</span></div><div style="display:flex;align-items:center;gap:12px"><span style="font-size:11px;color:var(--t3)">'+t.days_held+'d</span><span style="font-family:DM Mono,monospace;font-weight:700;color:'+(t.return_pct>=0?'var(--g)':'var(--r)')+'">'+( t.return_pct>=0?'+':'')+t.return_pct.toFixed(2)+'%</span></div></div>'; }).join('')+'</div></div>';
 }
 function renderCrits(){
   document.getElementById('bc').textContent=crits.length;
@@ -686,9 +706,12 @@ function renderClus(){
 }
 document.getElementById('criticbtn').addEventListener('click',function(){
   var btn=this; btn.disabled=true; btn.classList.add('loading');
+  // Use seeded closed trades + any from pA/pB
   var ca=pA.filter(function(p){ return p.return_pct!==undefined; }).slice(-10).map(function(p){ return Object.assign({},p,{portfolio:'A'}); });
   var cb=pB.filter(function(p){ return !p.declined&&p.return_pct!==undefined; }).map(function(p){ return Object.assign({},p,{portfolio:'B'}); });
-  var all=ca.concat(cb);
+  var all=closedTrades.concat(ca).concat(cb);
+  // Dedupe by ticker+portfolio
+  var seen2=new Set(); all=all.filter(function(t){ var k=(t.ticker||t.sym)+'|'+(t.portfolio||'A'); if(seen2.has(k)) return false; seen2.add(k); return true; });
   if(!all.length){ toast('No closed trades found'); btn.disabled=false; btn.classList.remove('loading'); return; }
   ai('You are Critic AI. Respond ONLY in valid JSON array.','Analyze: '+JSON.stringify(all.slice(0,12))+' Return: [{"ticker":"?","portfolio":"?","outcome":"win|loss","date":"?","postmortem":"2-3 sentences why","lesson":"one concrete rule","failure_category":"wrong_stock|wrong_timing|overconfidence|sector_weakness"}]',2500)
   .then(function(r){ var items=pj(r); if(!Array.isArray(items)) throw new Error('not array'); var ex=new Set(crits.map(function(c){ return c.ticker+'|'+c.portfolio; })); var fresh=items.filter(function(c){ return !ex.has(c.ticker+'|'+c.portfolio); }); crits=crits.concat(fresh); return gput(STUDY,'critiques.json',crits).then(function(){ renderCrits(); toast('✦ '+fresh.length+' postmortems written'); }); })
@@ -697,7 +720,7 @@ document.getElementById('criticbtn').addEventListener('click',function(){
 });
 document.getElementById('clusterbtn').addEventListener('click',function(){
   var btn=this; btn.disabled=true; btn.classList.add('loading');
-  var n=pA.filter(function(p){ return p.return_pct!==undefined; }).length+pB.filter(function(p){ return !p.declined&&p.return_pct!==undefined; }).length;
+  var n=closedTrades.length+pA.filter(function(p){ return p.return_pct!==undefined; }).length+pB.filter(function(p){ return !p.declined&&p.return_pct!==undefined; }).length;
   if(n<10){ toast('Need 10+ closed trades (have '+n+')'); btn.disabled=false; btn.classList.remove('loading'); return; }
   ai('You are a trading pattern analyst. Respond ONLY in valid JSON array.','Find 3-5 patterns from: '+JSON.stringify(crits.slice(-30))+' Return: [{"pattern":"name","frequency":0,"description":"2-3 sentences","recommendation":"specific rule"}]',1500)
   .then(function(r){ clus=pj(r); if(!Array.isArray(clus)) throw new Error('not array'); return gput(STUDY,'mistake_clusters.json',clus).then(function(){ renderClus(); return updateMem(true); }).then(function(){ toast('✦ '+clus.length+' patterns found'); }); })
