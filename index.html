@@ -385,7 +385,7 @@ tbody td{padding:9px 12px;}
 
 <script>
 var GH  = 'ghp_SdaFPdpP720' + '5qDi9C6vMGLl8K' + 'fKV1p39Nq3a';
-var AK  = 'sk-ant-api03-PsOAZ0uTvFrSw72tu' + 'DRY9ZjLtJ_kzd415IWihK88q3WCeUhPqXPb' + 'mZ0S3bLuduPkheOPJ-zp4uehfFglg_oVkw-OuxA8AAA';
+// AK removed — calls proxied through /api/claude (key lives in Vercel env vars)
 var FHK = 'd8fhh6hr01qn443a0bngd8fhh6hr01qn443a0bo0';
 var STUDY = 'mscharbo-commits/pulsestock-study-data';
 var DATA  = 'mscharbo-commits/pulsestock-data';
@@ -426,9 +426,10 @@ function gput(repo,path,data){
 // CLAUDE
 function ai(sys,usr,tok){
   tok=tok||2000;
-  return fetch('https://api.anthropic.com/v1/messages',{
+  // Calls go through /api/claude — API key stays server-side in Vercel env vars
+  return fetch('/api/claude',{
     method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':AK,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    headers:{'Content-Type':'application/json'},
     body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:tok,system:sys,messages:[{role:'user',content:usr}]})
   }).then(function(r){ return r.json(); }).then(function(d){
     if(d.error) throw new Error(d.error.message);
