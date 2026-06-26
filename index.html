@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782515098 -->
+<!-- v1782515262 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -192,8 +192,8 @@ tbody td{padding:9px 12px;}
     <span class="htime" id="htime"></span>
   </header>
   <div class="tabs">
-    <div class="tab on" data-t="a">Portfolio A <span class="tbadge" id="ba">0</span></div>
-    <div class="tab" data-t="b">Portfolio B <span class="tbadge" id="bb">0</span></div>
+    <div class="tab on" data-t="a">Core Portfolio <span class="tbadge" id="ba">0</span></div>
+    <div class="tab" data-t="b">Learning Portfolio <span class="tbadge" id="bb">0</span></div>
     <div class="tab" data-t="compare">Compare</div>
     <div class="tab" data-t="critic">Critic AI <span class="tbadge" id="bc">0</span></div>
     <div class="tab" data-t="learning">Learning Loop <span class="tbadge" id="br">0</span></div>
@@ -211,9 +211,9 @@ tbody td{padding:9px 12px;}
       <div class="sc"><div class="sn nb" id="a-op">0</div><div class="sl">Open</div></div>
     </div>
     <div class="content">
-      <div class="ibox"><strong>Portfolio A — Haiku Picks (read-only).</strong> Daily picks from the picks platform. Control group baseline.</div>
+      <div class="ibox"><strong>Core Portfolio — Core Picks (read-only).</strong> Daily picks from the picks platform. Control group baseline.</div>
       <div class="card">
-        <div class="ch"><div class="ct">Haiku Picks</div></div>
+        <div class="ch"><div class="ct">Core Picks</div></div>
         <div id="a-load" class="empty"><div class="ei">⏳</div><div class="et">Loading…</div></div>
         <div class="tw" id="a-wrap" style="display:none">
           <table><thead><tr><th>Ticker</th><th>Date</th><th>Action</th><th>Entry</th><th>Current</th><th>P&amp;L</th><th>Target</th><th>Stop</th><th>Status</th></tr></thead>
@@ -233,10 +233,10 @@ tbody td{padding:9px 12px;}
       <div class="sc"><div class="sn nam" id="b-dec">0</div><div class="sl">Declined</div></div>
     </div>
     <div class="content">
-      <div class="ibox"><strong>Portfolio B — Sonnet 4.6.</strong> Chain-of-thought + adversarial critique + 80% confidence gate. Strategy memory and regime injected into every pick.</div>
+      <div class="ibox"><strong>Learning Portfolio — Sonnet 4.6.</strong> Chain-of-thought + adversarial critique + 80% confidence gate. Strategy memory and regime injected into every pick.</div>
       <div class="card">
         <div class="ch">
-          <div class="ct">Generate Picks — Sonnet · 80% Gate</div>
+          <div class="ct">Generate Picks — Learning AI · 80% Gate</div>
           <div style="display:flex;align-items:center;gap:8px">
             <select id="pick-count" style="padding:7px 10px;border:1.5px solid var(--b);border-radius:7px;font-size:13px;font-family:inherit;outline:none;background:#fff;color:var(--t)">
               <option value="1">1 pick</option>
@@ -247,7 +247,7 @@ tbody td{padding:9px 12px;}
             <button class="btnp" id="genbtn"><span class="spin"></span>✦ Generate</button>
           </div>
         </div>
-        <div style="padding:10px 16px;font-size:12px;color:var(--t3)">Sonnet 4.6 · Chain-of-thought · Adversarial critique · Strategy memory · Market regime · Real Finnhub prices</div>
+        <div style="padding:10px 16px;font-size:12px;color:var(--t3)">Learning AI · Chain-of-thought · Adversarial critique · Strategy memory · Market regime · Real Finnhub prices</div>
         <div id="gen-progress" style="display:none;padding:10px 16px;border-top:1px solid var(--b)">
           <div style="display:flex;justify-content:space-between;margin-bottom:6px">
             <span style="font-size:12px;font-weight:600;color:var(--t2)" id="gen-status">Generating…</span>
@@ -260,7 +260,7 @@ tbody td{padding:9px 12px;}
         </div>
       </div>
       <div class="pgrid" id="b-grid"></div>
-      <div id="b-empty" class="empty"><div class="ei">🧪</div><div class="et">No Portfolio B picks yet</div><div class="es">Generate your first pick above</div></div>
+      <div id="b-empty" class="empty"><div class="ei">🧪</div><div class="et">No Learning Portfolio picks yet</div><div class="es">Generate your first pick above</div></div>
     </div>
   </div>
 
@@ -273,14 +273,14 @@ tbody td{padding:9px 12px;}
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--b)">
             <div class="cdot" style="background:var(--a)"></div>
-            <div><div style="font-size:13px;font-weight:700">Portfolio A — Haiku</div><div style="font-size:11px;color:var(--t3)">Standard · fast · broad</div></div>
+            <div><div style="font-size:13px;font-weight:700">Core Portfolio — Haiku</div><div style="font-size:11px;color:var(--t3)">Standard · fast · broad</div></div>
           </div>
           <div id="cmp-a"></div>
         </div>
         <div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--b)">
             <div class="cdot" style="background:var(--p)"></div>
-            <div><div style="font-size:13px;font-weight:700">Portfolio B — Sonnet</div><div style="font-size:11px;color:var(--t3)">Chain-of-thought · 80% gate</div></div>
+            <div><div style="font-size:13px;font-weight:700">Learning Portfolio — Sonnet</div><div style="font-size:11px;color:var(--t3)">Chain-of-thought · 80% gate</div></div>
           </div>
           <div id="cmp-b"></div>
         </div>
@@ -309,7 +309,7 @@ tbody td{padding:9px 12px;}
   <!-- LEARNING -->
   <div class="panel" id="panel-learning">
     <div class="content">
-      <div class="ibox"><strong>Learning Loop.</strong> Picks → Outcomes → Postmortems → Rules → Better Picks. Portfolio B builds institutional memory over 90 days.</div>
+      <div class="ibox"><strong>Learning Loop.</strong> Picks → Outcomes → Postmortems → Rules → Better Picks. Learning Portfolio builds institutional memory over 90 days.</div>
       <div class="lgrid">
         <div class="lnode"><div style="font-size:22px;margin-bottom:6px">🎯</div><div style="font-size:12px;font-weight:700;margin-bottom:4px">Prediction AI</div><div style="font-size:11px;color:var(--t3)">Sonnet picks using memory + regime</div></div>
         <div class="lnode"><div style="font-size:22px;margin-bottom:6px">📦</div><div style="font-size:12px;font-weight:700;margin-bottom:4px">Outcome DB</div><div style="font-size:11px;color:var(--t3)">Every trade stored with full context</div></div>
@@ -756,7 +756,7 @@ document.getElementById('genbtn').addEventListener('click', function() {
       addLog('-> ' + ticker + ': ' + (nom.reason || '').substring(0, 70));
 
       // Step 2: full deep dive
-      var sys = 'You are Portfolio B — a high-conviction stock pick AI. '
+      var sys = 'You are Learning Portfolio — a high-conviction stock pick AI. '
         + 'Chain-of-thought + adversarial self-critique. '
         + 'Confidence threshold is 80% — if confidence is below 80 you MUST set declined:true. '
         + 'Respond ONLY in valid JSON, no markdown.';
@@ -785,7 +785,7 @@ document.getElementById('genbtn').addEventListener('click', function() {
         var finalHeld = getAllHeld();
         if (!pick.declined && finalHeld.indexOf(pick.ticker) >= 0) {
           pick.declined = true;
-          pick.decline_reason = pick.ticker + ' already in Portfolio B';
+          pick.decline_reason = pick.ticker + ' already in Learning Portfolio';
         }
         if (pick.declined) {
           declined++;
@@ -1075,7 +1075,7 @@ document.getElementById('dubtn').addEventListener('click',function(){
   Promise.all([raw(DATA,'core_portfolio.json'),raw(DATA,'swing_portfolio.json'),raw(DATA,'market_context.json')]).then(function(res){
     var core=(res[0]&&res[0].trades||[]).filter(function(t){ return t.status==='open'; }).map(function(t){ return {sym:t.sym,entry:t.entryPrice,target:t.targetPrice,stop:t.stopPrice,date:t.entryDate,reason:t.reason||'',portfolio:'Core (A)'}; });
     var swing=(res[1]&&res[1].trades||[]).filter(function(t){ return t.status==='open'; }).map(function(t){ return {sym:t.sym,entry:t.entryPrice,target:t.targetPrice,stop:t.stopPrice,date:t.entryDate,reason:t.reason||'',portfolio:'Swing (A)'}; });
-    var bopen=pB.filter(function(p){ return !p.declined&&(!p.status||p.status==='open'); }).map(function(p){ return {sym:p.ticker,entry:p.entry_price,target:p.target_price,stop:p.stop_loss,date:p.date,reason:p.reasoning||'',portfolio:'Sonnet (B)'}; });
+    var bopen=pB.filter(function(p){ return !p.declined&&(!p.status||p.status==='open'); }).map(function(p){ return {sym:p.ticker,entry:p.entry_price,target:p.target_price,stop:p.stop_loss,date:p.date,reason:p.reasoning||'',portfolio:'Learning'}; });
     var all=core.concat(swing).concat(bopen);
     if(!all.length){ toast('No open positions'); btn.disabled=false; btn.classList.remove('loading'); return; }
     var updates=[];
