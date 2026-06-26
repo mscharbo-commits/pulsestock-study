@@ -404,14 +404,18 @@ var dailyUpdates = [];
 
 // AUTH
 document.getElementById('gate-btn').addEventListener('click', function() {
-  var val = document.getElementById('gate-input').value.trim();
-  if (val === 'pulsestock2026') {
-    document.getElementById('gate').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    initApp();
-  } else {
-    document.getElementById('gate-error').textContent = 'Incorrect access code.';
-    document.getElementById('gate-input').value = '';
+  try {
+    var val = document.getElementById('gate-input').value.trim();
+    if (val === 'pulsestock2026') {
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      initApp();
+    } else {
+      document.getElementById('gate-error').textContent = 'Incorrect access code.';
+      document.getElementById('gate-input').value = '';
+    }
+  } catch(e) {
+    alert('Gate error: ' + e.message + ' (line: ' + e.lineNumber + ')');
   }
 });
 document.getElementById('gate-input').addEventListener('keydown', function(e) {
@@ -1098,7 +1102,8 @@ Respond:
 // ═══ INIT ═══
 function initApp() {
   updateClock(); setInterval(updateClock, 30000);
-  return Promise.all([loadPortfolioA(), loadPortfolioB(), loadCritic(), loadLearning()]);
+  return Promise.all([loadPortfolioA(), loadPortfolioB(), loadCritic(), loadLearning()])
+    .catch(function(e) { console.error('initApp error:', e); toast('Load error: '+e.message); });
 }
 </script>
 </body>
