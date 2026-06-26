@@ -571,8 +571,17 @@ document.getElementById('genbtn').addEventListener('click',function(){
     var universe=[];
     batches.forEach(function(b){ if(b&&b.picks) universe=universe.concat(b.picks); });
     var buys=universe.filter(function(p){ return p.rating==='BUY'&&(p.confidence||0)>=65; }).slice(0,10);
+    // Build list of already-picked tickers and sectors to avoid duplication
+    var alreadyPicked = pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; });
+    var alreadySectors = pB.filter(function(p){ return !p.declined && p.sector; }).map(function(p){ return p.sector; });
+    // Count sector frequency
+    var sectorCount = {};
+    alreadySectors.forEach(function(s){ sectorCount[s]=(sectorCount[s]||0)+1; });
+    var overweightSectors = Object.keys(sectorCount).filter(function(s){ return sectorCount[s]>=2; });
     var ctx=buys.map(function(p){ return p.sym+' ('+p.sector+'): conf='+p.confidence+'% target=$'+p.target+' - '+p.reason; }).join(' | ')||'No batch data';
-    var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr+' Haiku top buys: '+ctx+' Open B picks: '+recentB+'. Pick the single best trade. Return JSON only, no markdown, no code block: {"ticker":"SYMBOL","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"timeframe":"short-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"400-600 words covering macro, sector, technical setup, fundamental catalyst, adversarial challenge, final conviction","adversarial_response":"3 strongest reasons against this trade","reasoning":"100-150 word final thesis","key_risk":"1-2 sentence biggest risk","regime_context":"'+(regime?regime.label:'unknown')+'","date":"'+new Date().toISOString()+'"}';
+    var avoidStr = alreadyPicked.length ? 'ALREADY PICKED (do NOT repeat these tickers): '+alreadyPicked.join(', ')+'. ' : '';
+    var sectorStr = overweightSectors.length ? 'OVERWEIGHT SECTORS (avoid adding more): '+overweightSectors.join(', ')+'. Diversify into other sectors. ' : '';
+    var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr+' '+avoidStr+sectorStr+'Haiku top buys: '+ctx+'. Pick the single BEST trade that is NOT already in the portfolio. Must be a DIFFERENT ticker and ideally a DIFFERENT sector than existing picks. Prioritize: growth sectors (Technology, Financials, Industrials, Consumer Discretionary) over defensives unless regime specifically favors defensives. Return JSON only, no markdown, no code block: {"ticker":"SYMBOL","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"sector name","timeframe":"short-term","confidence":0,"declined":false,"decline_reason":null,"chain_of_thought":"400-600 words: macro environment, why this SECTOR specifically, why this STOCK specifically, technical setup (price vs MAs, RSI, momentum), fundamental catalyst, risk/reward, adversarial challenge, final conviction","adversarial_response":"3 strongest reasons against this trade","reasoning":"100-150 word final thesis","key_risk":"1-2 sentence biggest risk","regime_context":"'+(regime?regime.label:'unknown')+'","date":"'+new Date().toISOString()+'"}';
     return ai(sys,usr,2000);
   }).then(function(raw2){
     var pick=pj(raw2);
