@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782526028 -->
+<!-- v1782526065 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -966,11 +966,38 @@ function updateMem(silent){
     }
     var existing=(window._existingMem&&window._existingMem.rules)||mem.rules||[];
     var incoming=newMem.rules||[];
+    // Smart dedup: detect overlapping topics before merging
     var merged=existing.slice();
+    var topics=['china','stop','catalyst','vix','core','swing','otc','regime','sector','multi-quarter','early-exit','high-multiple','utility','defensive','volume'];
     incoming.forEach(function(nr){
-      var isDupe=merged.some(function(er){ return er.substring(0,50)===nr.substring(0,50); });
+      var nLow=nr.toLowerCase();
+      var isDupe=merged.some(function(er){
+        var eLow=er.toLowerCase();
+        // Exact prefix match
+        if(er.substring(0,60)===nr.substring(0,60)) return true;
+        // Topic overlap — if 3+ same key topics, it's a dupe
+        var overlap=topics.filter(function(t){ return nLow.indexOf(t)>=0&&eLow.indexOf(t)>=0; }).length;
+        return overlap>=3;
+      });
       if(!isDupe) merged.push(nr);
     });
+    // If total exceeds 14, ask AI to consolidate
+    if(merged.length>14){
+      return ai('You are a trading rules editor. Consolidate these rules into 10-13 clean non-overlapping rules. Merge duplicates. Keep the strongest version. Respond ONLY with a JSON array of strings.',
+        'Consolidate: '+JSON.stringify(merged), 1200)
+      .then(function(cr){
+        var final;
+        try{ final=pj(cr); if(!Array.isArray(final)) throw new Error(); }
+        catch(e){ final=merged.slice(0,13); }
+        newMem.rules=final;
+        mem=newMem; window._existingMem=JSON.parse(JSON.stringify(mem));
+        return gput(STUDY,'strategy_memory.json',mem).then(function(){
+          document.getElementById('br').textContent=(mem.rules||[]).length;
+          renderRules(); renderFactors();
+          if(!silent) toast('✦ Consolidated to '+(mem.rules||[]).length+' clean rules');
+        });
+      });
+    }
     newMem.rules=merged;
     mem=newMem;
     window._existingMem=JSON.parse(JSON.stringify(mem));
