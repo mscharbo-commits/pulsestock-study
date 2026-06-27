@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782526065 -->
+<!-- v1782526193 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -981,23 +981,8 @@ function updateMem(silent){
       });
       if(!isDupe) merged.push(nr);
     });
-    // If total exceeds 14, ask AI to consolidate
-    if(merged.length>14){
-      return ai('You are a trading rules editor. Consolidate these rules into 10-13 clean non-overlapping rules. Merge duplicates. Keep the strongest version. Respond ONLY with a JSON array of strings.',
-        'Consolidate: '+JSON.stringify(merged), 1200)
-      .then(function(cr){
-        var final;
-        try{ final=pj(cr); if(!Array.isArray(final)) throw new Error(); }
-        catch(e){ final=merged.slice(0,13); }
-        newMem.rules=final;
-        mem=newMem; window._existingMem=JSON.parse(JSON.stringify(mem));
-        return gput(STUDY,'strategy_memory.json',mem).then(function(){
-          document.getElementById('br').textContent=(mem.rules||[]).length;
-          renderRules(); renderFactors();
-          if(!silent) toast('✦ Consolidated to '+(mem.rules||[]).length+' clean rules');
-        });
-      });
-    }
+    // No cap on rules — more rules = more intelligence
+    // Only dedup exact or semantically identical rules (handled above)
     newMem.rules=merged;
     mem=newMem;
     window._existingMem=JSON.parse(JSON.stringify(mem));
