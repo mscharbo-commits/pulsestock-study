@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782527881 -->
+<!-- v1782527978 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -1385,9 +1385,11 @@ function autoCheckStops(core, swing, bopen, prices) {
           + '<span style="font-family:DM Mono,monospace;font-weight:700;color:var(--r)">' + retPct.toFixed(2) + '%</span>'
           + '</div></div>';
       }).join('')
-    + '<button onclick="autoCloseStopHits(' + JSON.stringify(triggered).replace(/"/g,"'") + ')" style="margin-top:10px;width:100%;padding:9px;background:var(--r);color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">📋 Log All Stop Hits & Run Learning Loop</button>';
+    + '<button onclick="autoCloseTriggered()" style="margin-top:10px;width:100%;padding:9px;background:var(--r);color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">📋 Log All Stop Hits & Run Learning Loop</button>';
+  window._stopTriggered = triggered;
 }
 
+function autoCloseTriggered() { return autoCloseStopHits(window._stopTriggered||[]); }
 function autoCloseStopHits(triggered) {
   raw(STUDY, 'closed_trades.json').then(function(existing) {
     var trades = existing || [];
