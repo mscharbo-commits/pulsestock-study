@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782526590 -->
+<!-- v1782526656 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -755,22 +755,63 @@ document.getElementById('genbtn').addEventListener('click', function() {
 
       addLog('-> ' + ticker + ': ' + (nom.reason || '').substring(0, 70));
 
-      // Step 2: full deep dive
-      var sys = 'You are Learning Portfolio — a high-conviction stock pick AI. '
-        + 'Chain-of-thought + adversarial self-critique. '
-        + 'Confidence threshold is 80% — if confidence is below 80 you MUST set declined:true. '
-        + 'Respond ONLY in valid JSON, no markdown.';
-      var usr = 'Today: ' + new Date().toDateString() + '. ' + regStr + ' ' + rulesStr
-        + ' Deep dive on ' + ticker + '. If confidence below 80%, set declined:true.'
-        + ' Return JSON: {"ticker":"' + ticker + '","action":"BUY","entry_price":0,"target_price":0,'
-        + '"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,'
-        + '"declined":false,"decline_reason":null,'
-        + '"chain_of_thought":"400-600 words: macro check, catalyst or technical entry, sector fit, risk/reward, adversarial challenge",'
-        + '"adversarial_response":"3 objections","reasoning":"100-150 word thesis",'
-        + '"key_risk":"biggest risk","regime_context":"' + (regime ? regime.label : 'unknown') + '",'
-        + '"date":"' + new Date().toISOString() + '"}';
-
-      return ai(sys, usr, 1800).then(function(raw2) {
+      // Step 2: fetch live technicals THEN deep dive
+      return Promise.all([
+        fh('quote?symbol='+ticker),
+        fh('stock/candle?symbol='+ticker+'&resolution=D&from='+(Math.floor(Date.now()/1000)-250*86400)+'&to='+Math.floor(Date.now()/1000))
+      ]).then(function(techRes){
+        var quote=techRes[0]||{}, candles=techRes[1]||{};
+        var techCtx='No technical data available';
+        if(candles.c&&candles.c.length>50){
+          var c=candles.c, price=quote.c||c[c.length-1], pc=quote.pc||c[c.length-2];
+          var dayChg=pc?((price-pc)/pc*100).toFixed(2):'?';
+          function sma(n){ return c.length>=n?(c.slice(-n).reduce(function(a,b){return a+b;},0)/n).toFixed(2):null; }
+          var ma20=sma(20),ma50=sma(50),ma200=sma(200);
+          var a20=ma20&&price>parseFloat(ma20),a50=ma50&&price>parseFloat(ma50),a200=ma200&&price>parseFloat(ma200);
+          var bullStack=a20&&a50&&a200;
+          var g=0,l=0;
+          for(var ri=Math.max(1,c.length-14);ri<c.length;ri++){var diff=c[ri]-c[ri-1];if(diff>0)g+=diff;else l+=Math.abs(diff);}
+          var rsi=g&&l?(100-(100/(1+(g/14)/(l/14)))).toFixed(1):'50';
+          function ema(p){if(c.length<p)return null;var k=2/(p+1),e=c.slice(0,p).reduce(function(a,b){return a+b;},0)/p;for(var i=p;i<c.length;i++)e=c[i]*k+e*(1-k);return e;}
+          var e12=ema(12),e26=ema(26),macdLine=e12&&e26?(e12-e26).toFixed(3):'0';
+          var vols=candles.v||[],avgV=vols.length>=20?(vols.slice(-20).reduce(function(a,b){return a+b;},0)/20):0;
+          var lastV=vols.length?vols[vols.length-1]:0,volR=avgV?(lastV/avgV).toFixed(2):'1';
+          var yr=c.slice(-252),w52h=Math.max.apply(null,yr).toFixed(2),w52l=Math.min.apply(null,yr).toFixed(2);
+          var pctH=((price-parseFloat(w52h))/parseFloat(w52h)*100).toFixed(1);
+          var rsiN=parseFloat(rsi);
+          var rsiZone=rsiN>=50&&rsiN<=70?'MOMENTUM ZONE 50-70 — trend intact, room to run':rsiN>70?'OVERBOUGHT >70 — crowded, reversal risk':'WEAK <50 — losing momentum';
+          techCtx='LIVE TECHNICALS: Price=$'+price.toFixed(2)+' ('+( dayChg>=0?'+':'')+dayChg+'%)'
+            +' | MA20=$'+( ma20||'?')+' ('+(a20?'ABOVE':'BELOW')+')'
+            +' | MA50=$'+( ma50||'?')+' ('+(a50?'ABOVE':'BELOW')+')'
+            +' | MA200=$'+( ma200||'?')+' ('+(a200?'ABOVE':'BELOW')+')'
+            +' | BULL STACK: '+(bullStack?'YES — all MAs aligned':'NO — not confirmed')
+            +' | RSI='+rsi+' '+rsiZone
+            +' | MACD='+macdLine+' ('+(parseFloat(macdLine)>0?'POSITIVE momentum':'NEGATIVE weakening')+')'
+            +' | Volume='+volR+'x avg ('+(parseFloat(volR)>1.5?'HIGH — institutional interest':'normal')+')'
+            +' | 52W High=$'+w52h+' ('+pctH+'% away) | 52W Low=$'+w52l;
+        }
+        var sys='You are Learning Portfolio AI — combining fundamental analysis with technical momentum confirmation. '
+          +'The sheep (retail + algorithmic momentum traders) follow MAs, RSI, and breakouts — use their momentum with you. '
+          +'Confidence threshold 80%. Below 80% set declined:true. Respond ONLY in valid JSON, no markdown.';
+        var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr
+          +' '+techCtx
+          +' Deep dive on '+ticker+'. Assess: (1) fundamental thesis and catalyst, '
+          +'(2) technical confirmation — is bull stack in place? RSI in momentum zone? Volume expanding? Are the sheep moving with us? '
+          +'(3) adversarial challenge. (4) final conviction. '
+          +'Technicals AGAINST thesis (below MA50, RSI<40, MACD negative) = reduce confidence 10-15pts. '
+          +'Technicals ALIGNED (bull stack, RSI 50-70, volume>1.2x) = increase confidence 5-10pts. '
+          +'Return JSON: {"ticker":"'+ticker+'","action":"BUY","entry_price":0,"target_price":0,'
+          +'"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,'
+          +'"declined":false,"decline_reason":null,'
+          +'"chain_of_thought":"400-600 words: fundamental thesis, catalyst check, technical analysis (MAs/RSI/MACD/volume — are the sheep aligned?), adversarial challenge, final conviction",'
+          +'"adversarial_response":"3 strongest objections",'
+          +'"reasoning":"100-150 word thesis combining fundamental and technical view",'
+          +'"key_risk":"biggest risk 1-2 sentences",'
+          +'"technical_score":"bull_stack|partial|bearish",'
+          +'"regime_context":"'+(regime?regime.label:'unknown')+'",'
+          +'"date":"'+new Date().toISOString()+'"}';
+        return ai(sys, usr, 2000);
+      }).then(function(raw2) {
         if (!raw2) throw new Error('Empty deep dive response');
         var pick = pj(raw2);
         if (pick.confidence !== undefined && pick.confidence <= 1) {
