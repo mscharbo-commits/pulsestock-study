@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782525095 -->
+<!-- v1782525215 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -945,9 +945,25 @@ function updateMem(silent){
   var btn=document.getElementById('membtn');
   if(!silent){ btn.disabled=true; btn.classList.add('loading'); }
   if(!clus.length&&!crits.length){ if(!silent) toast('Need critiques or clusters first'); if(!silent){ btn.disabled=false; btn.classList.remove('loading'); } return Promise.resolve(); }
-  return ai('You are a strategy synthesis AI. Respond ONLY in valid JSON.','From clusters: '+JSON.stringify(clus)+' and lessons: '+JSON.stringify(crits.slice(-10).map(function(c){ return c.lesson; }))+' Return: {"rules":["rule1","rule2"],"factor_weights":{"momentum":{"weight":0.5,"trend":"stable"},"mean_reversion":{"weight":0.5,"trend":"stable"},"value":{"weight":0.5,"trend":"stable"},"event_driven":{"weight":0.5,"trend":"stable"},"sector_rotation":{"weight":0.5,"trend":"stable"}},"updated_at":"'+new Date().toISOString()+'"}',1200)
+  var memPrompt = 'Analyze these trading patterns and lessons. Return ONLY a JSON object with two keys: "rules" (array of rule strings) and "factor_weights" (object with momentum/mean_reversion/value/event_driven/sector_rotation each having weight 0-1 and trend up/down/stable). Clusters: ' + JSON.stringify(clus.slice(0,5)) + ' Lessons: ' + JSON.stringify(crits.slice(-10).map(function(c){ return c.lesson; }));
+  return ai('You are a strategy synthesis AI. Respond ONLY with a valid JSON object, no markdown, no extra text.', memPrompt, 1200)
   .then(function(r){
-    var newMem=pj(r);
+    var newMem;
+    try {
+      newMem = pj(r);
+    } catch(e) {
+      // Try extracting just the rules array if full parse fails
+      var rulesMatch = r.match(/"rules"\s*:\s*\[([^\]]+)\]/);
+      if (rulesMatch) {
+        try {
+          newMem = { rules: JSON.parse('[' + rulesMatch[1] + ']'), factor_weights: {} };
+        } catch(e2) {
+          throw new Error('Could not parse rules from response');
+        }
+      } else {
+        throw new Error('JSON parse error: ' + e.message);
+      }
+    }
     var existing=(window._existingMem&&window._existingMem.rules)||mem.rules||[];
     var incoming=newMem.rules||[];
     var merged=existing.slice();
@@ -1374,20 +1390,18 @@ function autoRunLearningLoop() {
 
 function autoRunClustering() {
   if(crits.length < 3) return Promise.resolve();
-  return ai('You are a trading pattern analyst. Find patterns in BOTH wins and losses. Respond ONLY in valid JSON array.',
-    'Find 3-6 patterns from: '+JSON.stringify(crits.slice(-30))+
-    ' Include positive patterns (what winners had in common) AND negative patterns (what losers had in common).'+
-    ' Return: [{"pattern":"name","frequency":0,"type":"positive|negative","description":"2-3 sentences","recommendation":"specific rule"}]', 1500)
+  var clusPrompt = 'Find 3-6 patterns from these trade postmortems. Include both positive patterns (what winners had in common) and negative patterns (what losers had in common). Data: ' + JSON.stringify(crits.slice(-30)) + ' Return a JSON array where each item has: pattern (string), frequency (number), type (positive or negative), description (2-3 sentences), recommendation (specific actionable rule).';
+  return ai('You are a trading pattern analyst. Respond ONLY with a valid JSON array, no markdown.', clusPrompt, 1500)
   .then(function(r){
-    var newClus = pj(r);
-    if(!Array.isArray(newClus)) return;
+    var newClus;
+    try { newClus = pj(r); } catch(e) { throw new Error('Cluster parse error: ' + e.message); }
+    if(!Array.isArray(newClus) || !newClus.length) throw new Error('No clusters returned');
     clus = newClus;
     return gput(STUDY,'mistake_clusters.json',clus).then(function(){
       renderClus();
-      toast('✦ '+clus.length+' patterns found — updating strategy memory…');
-      // Step 3: Auto-update strategy memory
+      toast('✦ '+clus.length+' patterns found — updating rules…');
       return updateMem(true).then(function(){
-        toast('✦ Learning loop complete — rules updated');
+        toast('✦ Learning loop complete');
       });
     });
   }).catch(function(e){ toast('Cluster error: '+e.message); });
