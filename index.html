@@ -786,16 +786,18 @@ document.getElementById('genbtn').addEventListener('click', function() {
           var rsi=metric['rsi14d']?parseFloat(metric['rsi14d']).toFixed(1):null;
           var rsiZone=rsi?(parseFloat(rsi)>=50&&parseFloat(rsi)<=70?'MOMENTUM ZONE 50-70 — trend intact':parseFloat(rsi)>70?'OVERBOUGHT >70 — reversal risk':'WEAK <50 — losing momentum'):'unknown';
           addLog('-> Bull Stack: '+(bullStack?'YES':'NO')+(rsi?' | RSI: '+rsi:'')+' | MA50: '+(ma50||'?')+' | MA200: '+(ma200||'?'));
-          techCtx='LIVE TECHNICALS from Finnhub (real data, not estimates):'
-            +' Price=$'+( price?price.toFixed(2):'?')+' (Day: '+(dayChg>=0?'+':'')+dayChg+'%)'
-            +' | MA50=$'+(ma50||'calculating')+' ('+(a50?'ABOVE — medium trend bullish':'BELOW — bearish')+')'
-            +' | MA200=$'+(ma200||'calculating')+' ('+(a200?'ABOVE — long-term bull trend':'BELOW — in downtrend')+')'
-            +' | BULL STACK (above MA50+MA200): '+(bullStack?'CONFIRMED — institutional momentum aligned':'NOT CONFIRMED'+(a50?' (above MA50 only)':a200?' (above MA200 only)':'')+')'
-            +(rsi?' | RSI='+rsi+' '+rsiZone:''  )
-            +(w52h?' | 52W High=$'+w52h+' ('+pctFrom52h+'% from high)':''  )
-            +(w52l?' | 52W Low=$'+w52l:''  )
-            +(beta?' | Beta='+beta:''  )
-            +(vol10?' | 10d Avg Volume='+( vol10>1?vol10.toFixed(1)+'M shares':''+vol10+'M')+' daily':''  );
+          var volStr = vol10 ? (' | 10d Avg Volume=' + (vol10 > 1 ? vol10.toFixed(1) + 'M shares' : vol10 + 'M') + ' daily') : '';
+          var rsiStr = rsi ? (' | RSI=' + rsi + ' ' + rsiZone) : '';
+          var w52hStr = w52h ? (' | 52W High=$' + w52h + ' (' + pctFrom52h + '% from high)') : '';
+          var w52lStr = w52l ? (' | 52W Low=$' + w52l) : '';
+          var betaStr = beta ? (' | Beta=' + beta) : '';
+          var bullStr = bullStack ? 'CONFIRMED — institutional momentum aligned' : ('NOT CONFIRMED' + (a50 ? ' (above MA50 only)' : (a200 ? ' (above MA200 only)' : '')));
+          techCtx = 'LIVE TECHNICALS from Finnhub (real data, not estimates):'
+            + ' Price=$' + (price ? price.toFixed(2) : '?') + ' (Day: ' + (dayChg >= 0 ? '+' : '') + dayChg + '%)'
+            + ' | MA50=$' + (ma50 || 'n/a') + ' (' + (a50 ? 'ABOVE — bullish' : 'BELOW — bearish') + ')'
+            + ' | MA200=$' + (ma200 || 'n/a') + ' (' + (a200 ? 'ABOVE — bull trend' : 'BELOW — downtrend') + ')'
+            + ' | BULL STACK: ' + bullStr
+            + rsiStr + w52hStr + w52lStr + betaStr + volStr;
         } else {
           techCtx='No technical data available. Do NOT estimate. Base confidence on fundamentals and regime only.';
           addLog('-> No technical data — Sonnet will use fundamentals only');
