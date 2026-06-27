@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782515262 -->
+<!-- v1782525049 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -904,7 +904,13 @@ document.getElementById('clusterbtn').addEventListener('click',function(){
 
 // ── LEARNING ─────────────────────────────────────────────
 function loadLearn(){
-  return Promise.all([raw(STUDY,'strategy_memory.json').then(function(d){ mem=d||{rules:[],factor_weights:{}}; }),raw(STUDY,'regime_log.json').then(function(d){ reg=d||{current_regime:null}; })]);
+  return Promise.all([
+    raw(STUDY,'strategy_memory.json').then(function(d){
+      mem=d||{rules:[],factor_weights:{}};
+      window._existingMem = JSON.parse(JSON.stringify(mem)); // snapshot for merge
+    }),
+    raw(STUDY,'regime_log.json').then(function(d){ reg=d||{current_regime:null}; })
+  ]);
 }
 function renderLearn(){ renderRules(); renderFactors(); renderCal(); renderRegime(); }
 function renderRules(){
@@ -1013,6 +1019,8 @@ function loadMon(){
       document.getElementById('m-alerts').innerHTML=allT.filter(function(t){ var p=prices[t.sym]; return sdist(t.entryPrice,t.stopPrice,p)!==null&&sdist(t.entryPrice,t.stopPrice,p)<15; }).map(function(t){ var p=prices[t.sym]; var sd=sdist(t.entryPrice,t.stopPrice,p); return '<div class="acard"><div style="font-size:20px">'+(sd<5?'🚨':'⚠️')+'</div><div style="font-size:12px;color:var(--r);line-height:1.6"><strong>'+t.sym+'</strong> — Stop cushion: <strong>'+sd.toFixed(1)+'%</strong></div></div>'; }).join('');
       document.getElementById('m-upd').textContent='Updated '+new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
       ref.textContent='↻ Refresh'; ref.disabled=false;
+      // Auto stop loss check — close any position trading below its stop
+      autoCheckStops(core, swing, bopen, prices);
     });
   }).catch(function(e){ toast('Error: '+e.message); ref.textContent='↻ Refresh'; ref.disabled=false; });
 }
@@ -1221,6 +1229,101 @@ function confirmClose() {
   }).catch(function(e){ toast('Error: '+e.message); });
 }
 
+
+
+// ── AUTO STOP LOSS MONITOR ───────────────────────────────
+function autoCheckStops(core, swing, bopen, prices) {
+  var triggered = [];
+
+  // Check core positions
+  core.forEach(function(t) {
+    var price = prices[t.sym];
+    var stop = t.stopPrice || 0;
+    if (price && stop && price < stop && t.status === 'open') {
+      triggered.push({ticker:t.sym, entry:t.entryPrice, stop:stop, price:price, portfolio:'Core', reason:t.reason||''});
+    }
+  });
+
+  // Check swing positions
+  swing.forEach(function(t) {
+    var price = prices[t.sym];
+    var stop = t.stopPrice || 0;
+    if (price && stop && price < stop && t.status === 'open') {
+      triggered.push({ticker:t.sym, entry:t.entryPrice, stop:stop, price:price, portfolio:'Swing', reason:t.reason||''});
+    }
+  });
+
+  // Check Learning Portfolio
+  bopen.forEach(function(p) {
+    var price = prices[p.ticker];
+    var stop = p.stop_loss || 0;
+    if (price && stop && price < stop && (!p.status || p.status === 'open')) {
+      triggered.push({ticker:p.ticker, entry:p.entry_price, stop:stop, price:price, portfolio:'Learning', reason:p.reasoning||''});
+    }
+  });
+
+  if (!triggered.length) return;
+
+  // Show stop hit banner
+  var banner = document.getElementById('stop-hit-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'stop-hit-banner';
+    banner.style.cssText = 'background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:14px 16px;margin-bottom:12px';
+    document.getElementById('m-alerts').parentNode.insertBefore(banner, document.getElementById('m-alerts'));
+  }
+
+  banner.innerHTML = '<div style="font-size:13px;font-weight:700;color:var(--r);margin-bottom:10px">🚨 ' + triggered.length + ' Stop Loss'+(triggered.length>1?'es':'')+' Hit — Auto-closing</div>'
+    + triggered.map(function(t) {
+        var retPct = t.entry ? ((t.price - t.entry) / t.entry * 100) : 0;
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #FCA5A5">'
+          + '<div><strong style="font-family:DM Mono,monospace">' + t.ticker + '</strong> <span style="font-size:11px;color:var(--t3)">(' + t.portfolio + ')</span></div>'
+          + '<div style="display:flex;align-items:center;gap:12px">'
+          + '<span style="font-size:12px;color:var(--t3)">Stop: $' + t.stop.toFixed(2) + '</span>'
+          + '<span style="font-size:12px;color:var(--t3)">Price: $' + t.price.toFixed(2) + '</span>'
+          + '<span style="font-family:DM Mono,monospace;font-weight:700;color:var(--r)">' + retPct.toFixed(2) + '%</span>'
+          + '</div></div>';
+      }).join('')
+    + '<button onclick="autoCloseStopHits(' + JSON.stringify(triggered).replace(/"/g,"'") + ')" style="margin-top:10px;width:100%;padding:9px;background:var(--r);color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer">📋 Log All Stop Hits & Run Learning Loop</button>';
+}
+
+function autoCloseStopHits(triggered) {
+  raw(STUDY, 'closed_trades.json').then(function(existing) {
+    var trades = existing || [];
+    var added = 0;
+    triggered.forEach(function(t) {
+      var already = trades.find(function(c){ return c.ticker===t.ticker && c.portfolio===t.portfolio; });
+      if (!already) {
+        var retPct = t.entry ? ((t.price - t.entry) / t.entry * 100) : 0;
+        trades.push({
+          ticker: t.ticker,
+          entry_price: t.entry,
+          exit_price: parseFloat(t.price.toFixed(2)),
+          return_pct: parseFloat(retPct.toFixed(2)),
+          exit_reason: 'stop_hit',
+          status: 'closed',
+          portfolio: t.portfolio,
+          days_held: 0,
+          date: new Date().toISOString(),
+          sector: 'Unknown',
+          reason: t.reason
+        });
+        added++;
+      }
+    });
+    if (!added) { toast('All stop hits already logged'); return; }
+    return gput(STUDY, 'closed_trades.json', trades).then(function() {
+      closedTrades = trades;
+      renderClosedTrades();
+      toast('✦ ' + added + ' stop hits logged — running learning loop...');
+      // Remove stop-hit-banner
+      var b = document.getElementById('stop-hit-banner');
+      if (b) b.remove();
+      // Auto-run full learning loop
+      setTimeout(autoRunLearningLoop, 1000);
+    });
+  }).catch(function(e){ toast('Error: ' + e.message); });
+}
 
 // ── AUTO LEARNING LOOP ────────────────────────────────────
 function autoRunLearningLoop() {
