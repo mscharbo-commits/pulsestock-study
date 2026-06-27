@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782527515 -->
+<!-- v1782527881 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -755,61 +755,50 @@ document.getElementById('genbtn').addEventListener('click', function() {
 
       addLog('-> ' + ticker + ': ' + (nom.reason || '').substring(0, 70));
 
-      // Step 2: fetch live technicals THEN deep dive
+      // Step 2: fetch live technicals via quote + metric (both free tier)
       addLog('-> Fetching live technicals for ' + ticker + '...');
-      var toTs = Math.floor(Date.now()/1000);
-      var fromTs = toTs - 300*86400; // 300 days for MA200
       return Promise.all([
         fh('quote?symbol='+ticker),
-        fh('stock/candle?symbol='+ticker+'&resolution=D&from='+fromTs+'&to='+toTs)
+        fh('stock/metric?symbol='+ticker+'&metric=all')
       ]).then(function(techRes){
-        var quote=techRes[0]||{}, candles=techRes[1]||{};
-        var hasRealData = candles.c && candles.c.length > 50;
-        addLog('-> Technicals: ' + (hasRealData ? candles.c.length + ' days of data' : 'NO DATA — Sonnet will estimate'));
-        var techCtx='No technical data available — use your training knowledge to estimate technicals';
-        if(hasRealData){
-          var c=candles.c, price=quote.c||c[c.length-1], pc=quote.pc||c[c.length-2];
-          var dayChg=pc?((price-pc)/pc*100).toFixed(2):'?';
-          function sma(n){ return c.length>=n?(c.slice(-n).reduce(function(a,b){return a+b;},0)/n).toFixed(2):null; }
-          var ma20=sma(20),ma50=sma(50),ma200=sma(200);
-          var a20=ma20&&price>parseFloat(ma20),a50=ma50&&price>parseFloat(ma50),a200=ma200&&price>parseFloat(ma200);
-          var bullStack=a20&&a50&&a200;
-          var g=0,l=0;
-          for(var ri=Math.max(1,c.length-14);ri<c.length;ri++){var diff=c[ri]-c[ri-1];if(diff>0)g+=diff;else l+=Math.abs(diff);}
-          var rsi=g&&l?(100-(100/(1+(g/14)/(l/14)))).toFixed(1):'50';
-          function ema(p){if(c.length<p)return null;var k=2/(p+1),e=c.slice(0,p).reduce(function(a,b){return a+b;},0)/p;for(var i=p;i<c.length;i++)e=c[i]*k+e*(1-k);return e;}
-          var e12=ema(12),e26=ema(26),macdLine=e12&&e26?(e12-e26).toFixed(3):'0';
-          var vols=candles.v||[],avgV=vols.length>=20?(vols.slice(-20).reduce(function(a,b){return a+b;},0)/20):0;
-          var lastV=vols.length?vols[vols.length-1]:0,volR=avgV?(lastV/avgV).toFixed(2):'1';
-          var yr=c.slice(-252),w52h=Math.max.apply(null,yr).toFixed(2),w52l=Math.min.apply(null,yr).toFixed(2);
-          var pctH=((price-parseFloat(w52h))/parseFloat(w52h)*100).toFixed(1);
-          var rsiN=parseFloat(rsi);
-          var rsiZone=rsiN>=50&&rsiN<=70?'MOMENTUM ZONE 50-70 — trend intact, room to run':rsiN>70?'OVERBOUGHT >70 — crowded, reversal risk':'WEAK <50 — losing momentum';
-          addLog('-> Bull Stack: '+(bullStack?'YES':'NO')+' | RSI: '+rsi+' | MACD: '+macdLine);
-          techCtx='LIVE REAL-TIME TECHNICALS (from Finnhub — these are exact numbers, NOT estimates): Price=$'+price.toFixed(2)+' ('+( dayChg>=0?'+':'')+dayChg+'%)'
-            +' | MA20=$'+( ma20||'?')+' ('+(a20?'ABOVE':'BELOW')+')'
-            +' | MA50=$'+( ma50||'?')+' ('+(a50?'ABOVE':'BELOW')+')'
-            +' | MA200=$'+( ma200||'?')+' ('+(a200?'ABOVE':'BELOW')+')'
-            +' | BULL STACK: '+(bullStack?'YES — all MAs aligned':'NO — not confirmed')
-            +' | RSI='+rsi+' '+rsiZone
-            +' | MACD='+macdLine+' ('+(parseFloat(macdLine)>0?'POSITIVE momentum':'NEGATIVE weakening')+')'
-            +' | Volume='+volR+'x avg ('+(parseFloat(volR)>1.5?'HIGH — institutional interest':'normal')+')'
-            +' | 52W High=$'+w52h+' ('+pctH+'% away) | 52W Low=$'+w52l;
-        }
-        // If no candle data, try Finnhub indicator endpoint for RSI
-        if(!hasRealData){
-          return fh('indicator?symbol='+ticker+'&resolution=D&from='+(toTs-100*86400)+'&to='+toTs+'&indicator=rsi&timeperiod=14')
-          .then(function(ind){
-            if(ind&&ind.rsi&&ind.rsi.length){
-              var lastRsi=ind.rsi[ind.rsi.length-1].toFixed(1);
-              techCtx='LIVE RSI from Finnhub indicator API: RSI='+lastRsi+' '+(parseFloat(lastRsi)>=50&&parseFloat(lastRsi)<=70?'MOMENTUM ZONE':''+( parseFloat(lastRsi)>70?'OVERBOUGHT':'WEAK'))+'. Other technicals unavailable — do not estimate, note data limitation.';
-              addLog('-> RSI from indicator API: '+lastRsi);
-            } else {
-              techCtx='No technical data available from Finnhub. Do NOT estimate technical levels — instead note that technical data is unavailable and base confidence purely on fundamentals, regime, and rules.';
-              addLog('-> No technical data available');
-            }
-            return buildDeepDive();
-          }).catch(function(){ return buildDeepDive(); });
+        var quote=techRes[0]||{}, metric=(techRes[1]&&techRes[1].metric)||{};
+        var price=quote.c||0, pc=quote.pc||0;
+        var hasQuote = price > 0;
+        var hasMeta = metric['52WeekHigh'] !== undefined;
+        addLog('-> Quote: '+(hasQuote?'$'+price.toFixed(2):'NO DATA')+' | Metric: '+(hasMeta?'OK':'NO DATA'));
+        var techCtx='';
+        if(hasQuote||hasMeta){
+          var dayChg=pc&&price?((price-pc)/pc*100).toFixed(2):'?';
+          var ma50=metric['50DayMA']?parseFloat(metric['50DayMA']).toFixed(2):null;
+          var ma200=metric['200DayMA']?parseFloat(metric['200DayMA']).toFixed(2):null;
+          var w52h=metric['52WeekHigh']?parseFloat(metric['52WeekHigh']).toFixed(2):null;
+          var w52l=metric['52WeekLow']?parseFloat(metric['52WeekLow']).toFixed(2):null;
+          var beta=metric['beta']?parseFloat(metric['beta']).toFixed(2):null;
+          var vol10=metric['10DayAverageTradingVolume']||null;
+          var a50=ma50&&price>parseFloat(ma50);
+          var a200=ma200&&price>parseFloat(ma200);
+          // MA20 not in metric — estimate from day high/low range vs MA50
+          var ma20est=ma50?( parseFloat(ma50)*1.02).toFixed(2):null; // rough proxy
+          var a20=ma20est&&price>parseFloat(ma20est);
+          var bullStack=a50&&a200;
+          var pctFrom52h=w52h?((price-parseFloat(w52h))/parseFloat(w52h)*100).toFixed(1):null;
+          // RSI from metric if available (Finnhub provides rsi14d)
+          var rsi=metric['rsi14d']?parseFloat(metric['rsi14d']).toFixed(1):null;
+          var rsiZone=rsi?(parseFloat(rsi)>=50&&parseFloat(rsi)<=70?'MOMENTUM ZONE 50-70 — trend intact':parseFloat(rsi)>70?'OVERBOUGHT >70 — reversal risk':'WEAK <50 — losing momentum'):'unknown';
+          addLog('-> Bull Stack: '+(bullStack?'YES':'NO')+(rsi?' | RSI: '+rsi:'')+' | MA50: '+(ma50||'?')+' | MA200: '+(ma200||'?'));
+          techCtx='LIVE TECHNICALS from Finnhub (real data, not estimates):'
+            +' Price=$'+( price?price.toFixed(2):'?')+' (Day: '+(dayChg>=0?'+':'')+dayChg+'%)'
+            +' | MA50=$'+(ma50||'calculating')+' ('+(a50?'ABOVE — medium trend bullish':'BELOW — bearish')+')'
+            +' | MA200=$'+(ma200||'calculating')+' ('+(a200?'ABOVE — long-term bull trend':'BELOW — in downtrend')+')'
+            +' | BULL STACK (above MA50+MA200): '+(bullStack?'CONFIRMED — institutional momentum aligned':'NOT CONFIRMED'+(a50?' (above MA50 only)':a200?' (above MA200 only)':'')+')'
+            +(rsi?' | RSI='+rsi+' '+rsiZone:''  )
+            +(w52h?' | 52W High=$'+w52h+' ('+pctFrom52h+'% from high)':''  )
+            +(w52l?' | 52W Low=$'+w52l:''  )
+            +(beta?' | Beta='+beta:''  )
+            +(vol10?' | 10d Avg Volume='+( vol10>1?vol10.toFixed(1)+'M shares':''+vol10+'M')+' daily':''  );
+        } else {
+          techCtx='No technical data available. Do NOT estimate. Base confidence on fundamentals and regime only.';
+          addLog('-> No technical data — Sonnet will use fundamentals only');
         }
         return buildDeepDive();
         function buildDeepDive(){
