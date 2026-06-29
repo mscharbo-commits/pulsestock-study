@@ -18,14 +18,27 @@ module.exports = async function handler(req, res) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+
+    // Inject web search tool on every request
+    // Sonnet can now search for current earnings dates, news, catalysts before picking
+    const enriched = Object.assign({}, body, {
+      tools: [
+        {
+          type: 'web_search_20250305',
+          name: 'web_search'
+        }
+      ]
+    });
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': key,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'web-search-2025-03-05'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(enriched)
     });
     const data = await response.json();
     return res.status(response.status).json(data);
