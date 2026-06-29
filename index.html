@@ -522,7 +522,18 @@ function pj(s){
 function fh(ep){ return fetch('https://finnhub.io/api/v1/'+ep+'&token='+FHK).then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; }); }
 function getprice(sym){
   if(pcache[sym]&&(Date.now()-pcache[sym].t)<60000) return Promise.resolve(pcache[sym].p);
-  return fh('quote?symbol='+sym).then(function(d){ var p=d&&d.c?d.c:null; if(p) pcache[sym]={p:p,t:Date.now()}; return p; }).catch(function(){ return null; });
+  return fh('quote?symbol='+sym).then(function(d){
+    var p=d&&d.c?d.c:null;
+    if(p){ pcache[sym]={p:p,t:Date.now()}; return p; }
+    // Retry once after 1 second — may be rate limited
+    return new Promise(function(res){ setTimeout(res, 1000); }).then(function(){
+      return fh('quote?symbol='+sym).then(function(d2){
+        var p2=d2&&d2.c?d2.c:null;
+        if(p2) pcache[sym]={p:p2,t:Date.now()};
+        return p2;
+      });
+    });
+  }).catch(function(){ return null; });
 }
 
 // TABS
@@ -801,24 +812,18 @@ document.getElementById('genbtn').addEventListener('click', function() {
       // and go straight to deep dive. Sonnet will web_search for price if needed.
       var _ticker = ticker;
       addLog('-> Getting price for '+_ticker+'...');
-      getprice(_ticker).then(function(livePrice){
-        if(!livePrice || livePrice <= 0){
-          // Try direct fh quote as backup
-          return fh('quote?symbol='+_ticker).then(function(q){
-            return q && q.c ? q.c : 0;
-          });
-        }
-        return livePrice;
+      // Add small delay to avoid Finnhub rate limiting during batch
+      new Promise(function(res){ setTimeout(res, 800); }).then(function(){
+        return getprice(_ticker);
       }).then(function(price){
         if(!price || price <= 0){
-          addLog('-> '+_ticker+': no price from Finnhub — Sonnet will search for current price');
+          addLog('-> '+_ticker+': price unavailable — Sonnet will web search');
         } else {
-          addLog('-> Price: $'+price.toFixed(2)+' — proceeding to deep dive');
+          addLog('-> Price: $'+price.toFixed(2));
         }
-        // Always proceed to deep dive — let Sonnet handle missing price via web search
-        return doDeepDive(_ticker, {c: price, pc: 0});
+        return doDeepDive(_ticker, {c: price||0, pc: 0});
       }).catch(function(e){
-        addLog('-> Price fetch error: '+(e.message||'unknown')+' — proceeding anyway');
+        addLog('-> Price error, proceeding: '+(e.message||''));
         return doDeepDive(_ticker, {});
       });
     }).catch(function(e){
