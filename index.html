@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782773600 -->
+<!-- v1782773641 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -710,12 +710,21 @@ document.getElementById('genbtn').addEventListener('click', function() {
 
   // Step 0: Load pB fresh from GitHub, then start
   statusEl.textContent = 'Loading current portfolio...';
-  raw(STUDY, 'portfolio_b.json').then(function(fresh) {
-    if (fresh) pB = fresh;
-    addLog('Loaded — ' + getAllHeld().length + ' tickers held');
+  Promise.all([
+    raw(STUDY, 'portfolio_b.json'),
+    raw(STUDY, 'ticker_universe.json'),
+    raw(STUDY, 'declined_tickers.json')
+  ]).then(function(res) {
+    if(res[0]) pB = res[0];
+    window._universe = res[1] && res[1].all ? res[1].all : [];
+    window._declinedMap = res[2] || {};
+    window._genDeclined = window._declinedMap[String(curGenId)] || [];
+    addLog('Loaded — ' + getAllHeld().length + ' held | Universe: ' + window._universe.length + ' | Declined this gen: ' + window._genDeclined.length);
     runNext();
   }).catch(function() {
-    addLog('Loaded from memory — ' + getAllHeld().length + ' tickers held');
+    window._universe = window._universe || [];
+    window._genDeclined = window._genDeclined || [];
+    addLog('Loaded from memory');
     runNext();
   });
 
@@ -770,7 +779,14 @@ document.getElementById('genbtn').addEventListener('click', function() {
       var currentHeld = getAllHeld();
       if (currentHeld.indexOf(ticker) >= 0) {
         addLog('x ' + ticker + ' already held — retrying');
-        setTimeout(runNext, 300); // retry, don't count as decline
+        setTimeout(runNext, 300);
+        return;
+      }
+      // Check per-gen declined list
+      var gd = window._genDeclined || [];
+      if (gd.indexOf(ticker) >= 0) {
+        addLog('x ' + ticker + ' previously declined this gen — skipping');
+        setTimeout(runNext, 300);
         return;
       }
 
