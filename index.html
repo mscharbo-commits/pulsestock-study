@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782757397 -->
+<!-- v1782770014 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -478,25 +478,14 @@ function gput(repo,path,data){
 // CLAUDE
 function ai(sys,usr,tok){
   tok=tok||2000;
+  // Calls go through /api/claude — API key stays server-side in Vercel env vars
   return fetch('/api/claude',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:tok,system:sys,messages:[{role:'user',content:usr}]})
   }).then(function(r){ return r.json(); }).then(function(d){
     if(d.error) throw new Error(d.error.message||JSON.stringify(d.error));
-    var textBlock = d.content && d.content.find(function(b){ return b.type==='text'; });
-    return textBlock ? textBlock.text : '';
-  });
-}
-function aiSearch(sys,usr,tok){
-  // Like ai() but enables web search — use for nomination and current-events questions
-  tok=tok||1000;
-  return fetch('/api/claude',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:tok,use_search:true,system:sys,messages:[{role:'user',content:usr}]})
-  }).then(function(r){ return r.json(); }).then(function(d){
-    if(d.error) throw new Error(d.error.message||JSON.stringify(d.error));
+    // Find text block — web search adds tool_use blocks before the text
     var textBlock = d.content && d.content.find(function(b){ return b.type==='text'; });
     return textBlock ? textBlock.text : '';
   });
@@ -522,18 +511,7 @@ function pj(s){
 function fh(ep){ return fetch('https://finnhub.io/api/v1/'+ep+'&token='+FHK).then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; }); }
 function getprice(sym){
   if(pcache[sym]&&(Date.now()-pcache[sym].t)<60000) return Promise.resolve(pcache[sym].p);
-  return fh('quote?symbol='+sym).then(function(d){
-    var p=d&&d.c?d.c:null;
-    if(p){ pcache[sym]={p:p,t:Date.now()}; return p; }
-    // Retry once after 1 second — may be rate limited
-    return new Promise(function(res){ setTimeout(res, 1000); }).then(function(){
-      return fh('quote?symbol='+sym).then(function(d2){
-        var p2=d2&&d2.c?d2.c:null;
-        if(p2) pcache[sym]={p:p2,t:Date.now()};
-        return p2;
-      });
-    });
-  }).catch(function(){ return null; });
+  return fh('quote?symbol='+sym).then(function(d){ var p=d&&d.c?d.c:null; if(p) pcache[sym]={p:p,t:Date.now()}; return p; }).catch(function(){ return null; });
 }
 
 // TABS
@@ -709,10 +687,10 @@ document.getElementById('genbtn').addEventListener('click', function() {
     logEl.innerHTML = msg + '<br>' + logEl.innerHTML;
   }
   function updateBar() {
-    barEl.style.width = (total > 0 ? (published / total * 100) : 0) + '%';
-    countEl.textContent = published + '/' + total;
-    statusEl.textContent = published < total
-      ? 'Published ' + published + ' of ' + total + ' — attempt ' + (attempts||0) + ' (declined: ' + declined + ')...'
+    barEl.style.width = (total > 0 ? (completed / total * 100) : 0) + '%';
+    countEl.textContent = completed + '/' + total;
+    statusEl.textContent = completed < total
+      ? 'Generating pick ' + (completed + 1) + ' of ' + total + '...'
       : 'Done — ' + published + ' published, ' + declined + ' declined';
   }
   function getAllHeld() {
@@ -722,35 +700,23 @@ document.getElementById('genbtn').addEventListener('click', function() {
   }
 
   // Step 0: Load pB fresh from GitHub, then start
-  statusEl.textContent = 'Loading portfolio and universe...';
-  Promise.all([raw(STUDY,'portfolio_b.json'),raw(STUDY,'ticker_universe.json')]).then(function(res){
-    if(res[0]) pB=res[0];
-    window._universe=res[1]&&res[1].all?res[1].all:[];
-    addLog('Loaded — '+getAllHeld().length + ' tickers held');
+  statusEl.textContent = 'Loading current portfolio...';
+  raw(STUDY, 'portfolio_b.json').then(function(fresh) {
+    if (fresh) pB = fresh;
+    addLog('Loaded — ' + getAllHeld().length + ' tickers held');
     runNext();
   }).catch(function() {
-    addLog('Loaded from memory');
+    addLog('Loaded from memory — ' + getAllHeld().length + ' tickers held');
     runNext();
-  }).catch(function(){ window._universe=[]; runNext(); });
+  });
 
-  var maxAttempts = total * 5; // try up to 5x per requested pick
-  var attempts = 0;
   function runNext() {
-    if (published >= total) {
+    if (completed >= total) {
       btn.disabled = false;
       btn.classList.remove('loading');
-      statusEl.textContent = 'Done — ' + published + ' published, ' + declined + ' declined';
-      toast('Batch done: ' + published + ' published after ' + attempts + ' attempts');
-      return;
-    }
-    if (attempts >= maxAttempts) {
-      btn.disabled = false;
-      btn.classList.remove('loading');
-      statusEl.textContent = 'Done — ' + published + ' published, ' + declined + ' declined (' + attempts + ' attempts)';
       toast('Batch done: ' + published + ' published, ' + declined + ' declined');
       return;
     }
-    attempts++;
     updateBar();
 
     var held = getAllHeld();
@@ -765,17 +731,12 @@ document.getElementById('genbtn').addEventListener('click', function() {
       : '';
 
     // Step 1: cheap nomination
-    // Universe constraint — shuffle available tickers, send 80 to Sonnet
-    var univ = window._universe||[];
-    var held2 = getAllHeld();
-    var avail = univ.filter(function(t){ return held2.indexOf(t)<0; }).sort(function(){ return Math.random()-0.5; }).slice(0,80);
-    var univStr = avail.length ? 'Pick ONLY from this S&P500/Russell2000 list: '+avail.join(',')+'. No other tickers allowed.' : '';
     var nomSys = 'You are a stock picking AI. Respond ONLY with a raw JSON object, no markdown.';
-    var nomUsr = 'Today: ' + new Date().toDateString() + '. ' + heldStr + ' ' + univStr + ' ' + regStr
+    var nomUsr = 'Today: ' + new Date().toDateString() + '. ' + heldStr + ' ' + regStr
       + ' Nominate ONE stock NOT on the blacklist with high conviction today.'
       + ' Return ONLY: {"ticker":"SYMBOL","reason":"one sentence"}';
 
-    aiSearch(nomSys, nomUsr, 300).then(function(nomRaw) {
+    ai(nomSys, nomUsr, 250).then(function(nomRaw) {
       if (!nomRaw) throw new Error('Empty nomination');
       var nom;
       try { nom = pj(nomRaw); } catch(e) {
@@ -784,16 +745,7 @@ document.getElementById('genbtn').addEventListener('click', function() {
         else throw new Error('Nomination parse failed');
       }
       var ticker = (nom.ticker || '').toUpperCase().replace(/[^A-Z]/g, '');
-      if (!ticker || ticker.length < 1 || ticker.length > 5) {
-        addLog('x Invalid ticker returned: ' + (ticker||'empty') + ' — skipping');
-        declined++; updateBar(); setTimeout(runNext, 500); return;
-      }
-      // Validate in universe — blocks garbage like FIX, BUY, N/A
-      var univ2 = window._universe || [];
-      if (univ2.length > 0 && univ2.indexOf(ticker) < 0) {
-        addLog('x ' + ticker + ' not in S&P500/Russell2000 — skipping');
-        declined++; updateBar(); setTimeout(runNext, 500); return;
-      }
+      if (!ticker || ticker.length < 1 || ticker.length > 5) throw new Error('Invalid ticker: ' + ticker);
 
       // Hard dupe check — check both pB and sessionHeld
       var currentHeld = getAllHeld();
@@ -808,314 +760,147 @@ document.getElementById('genbtn').addEventListener('click', function() {
 
       addLog('-> ' + ticker + ': ' + (nom.reason || '').substring(0, 70));
 
-      // Step 1.5: skip Finnhub price check — use getprice() which has caching
-      // and go straight to deep dive. Sonnet will web_search for price if needed.
-      var _ticker = ticker;
-      addLog('-> Getting price for '+_ticker+'...');
-      // Add small delay to avoid Finnhub rate limiting during batch
-      new Promise(function(res){ setTimeout(res, 800); }).then(function(){
-        return getprice(_ticker);
-      }).then(function(price){
-        if(!price || price <= 0){
-          addLog('-> '+_ticker+': price unavailable — Sonnet will web search');
+      // Step 2: fetch live technicals via quote + metric (both free tier)
+      addLog('-> Fetching live technicals for ' + ticker + '...');
+      return Promise.all([
+        fh('quote?symbol='+ticker),
+        fh('stock/metric?symbol='+ticker+'&metric=all')
+      ]).then(function(techRes){
+        var quote=techRes[0]||{}, metric=(techRes[1]&&techRes[1].metric)||{};
+        var price=quote.c||0, pc=quote.pc||0;
+        var hasQuote = price > 0;
+        var hasMeta = metric['52WeekHigh'] !== undefined;
+        addLog('-> Quote: '+(hasQuote?'$'+price.toFixed(2):'NO DATA')+' | Metric: '+(hasMeta?'OK':'NO DATA'));
+        var techCtx='';
+        if(hasQuote||hasMeta){
+          var dayChg=pc&&price?((price-pc)/pc*100).toFixed(2):'?';
+          var ma50=metric['50DayMA']?parseFloat(metric['50DayMA']).toFixed(2):null;
+          var ma200=metric['200DayMA']?parseFloat(metric['200DayMA']).toFixed(2):null;
+          var w52h=metric['52WeekHigh']?parseFloat(metric['52WeekHigh']).toFixed(2):null;
+          var w52l=metric['52WeekLow']?parseFloat(metric['52WeekLow']).toFixed(2):null;
+          var beta=metric['beta']?parseFloat(metric['beta']).toFixed(2):null;
+          var vol10=metric['10DayAverageTradingVolume']||null;
+          var a50=ma50&&price>parseFloat(ma50);
+          var a200=ma200&&price>parseFloat(ma200);
+          // MA20 not in metric — estimate from day high/low range vs MA50
+          var ma20est=ma50?( parseFloat(ma50)*1.02).toFixed(2):null; // rough proxy
+          var a20=ma20est&&price>parseFloat(ma20est);
+          var bullStack=a50&&a200;
+          var pctFrom52h=w52h?((price-parseFloat(w52h))/parseFloat(w52h)*100).toFixed(1):null;
+          // RSI from metric if available (Finnhub provides rsi14d)
+          var rsi=metric['rsi14d']?parseFloat(metric['rsi14d']).toFixed(1):null;
+          var rsiZone=rsi?(parseFloat(rsi)>=50&&parseFloat(rsi)<=70?'MOMENTUM ZONE 50-70 — trend intact':parseFloat(rsi)>70?'OVERBOUGHT >70 — reversal risk':'WEAK <50 — losing momentum'):'unknown';
+          addLog('-> Bull Stack: '+(bullStack?'YES':'NO')+(rsi?' | RSI: '+rsi:'')+' | MA50: '+(ma50||'?')+' | MA200: '+(ma200||'?'));
+          var volStr = vol10 ? (' | 10d Avg Volume=' + (vol10 > 1 ? vol10.toFixed(1) + 'M shares' : vol10 + 'M') + ' daily') : '';
+          var rsiStr = rsi ? (' | RSI=' + rsi + ' ' + rsiZone) : '';
+          var w52hStr = w52h ? (' | 52W High=$' + w52h + ' (' + pctFrom52h + '% from high)') : '';
+          var w52lStr = w52l ? (' | 52W Low=$' + w52l) : '';
+          var betaStr = beta ? (' | Beta=' + beta) : '';
+          var bullStr = bullStack ? 'CONFIRMED — institutional momentum aligned' : ('NOT CONFIRMED' + (a50 ? ' (above MA50 only)' : (a200 ? ' (above MA200 only)' : '')));
+          techCtx = 'LIVE TECHNICALS from Finnhub (real data, not estimates):'
+            + ' Price=$' + (price ? price.toFixed(2) : '?') + ' (Day: ' + (dayChg >= 0 ? '+' : '') + dayChg + '%)'
+            + ' | MA50=$' + (ma50 || 'n/a') + ' (' + (a50 ? 'ABOVE — bullish' : 'BELOW — bearish') + ')'
+            + ' | MA200=$' + (ma200 || 'n/a') + ' (' + (a200 ? 'ABOVE — bull trend' : 'BELOW — downtrend') + ')'
+            + ' | BULL STACK: ' + bullStr
+            + rsiStr + w52hStr + w52lStr + betaStr + volStr;
         } else {
-          addLog('-> Price: $'+price.toFixed(2));
+          techCtx='No technical data available. Do NOT estimate. Base confidence on fundamentals and regime only.';
+          addLog('-> No technical data — Sonnet will use fundamentals only');
         }
-        return (function(ticker, preloadedQuote){
-  // Step 2: fetch live technicals via quote + metric (both free tier)
-  addLog('-> Fetching live technicals for ' + ticker + '...');
-  return Promise.all([
-    preloadedQuote && preloadedQuote.c ? Promise.resolve(preloadedQuote) : fh('quote?symbol='+ticker),
-    fh('stock/metric?symbol='+ticker+'&metric=all')
-  ]).then(function(techRes){
-    var quote=techRes[0]||{}, metric=(techRes[1]&&techRes[1].metric)||{};
-    var price=quote.c||0, pc=quote.pc||0;
-    if(!price&&metric) price=metric['currentPrice']||metric['latestPrice']||0;
-    var hasQuote=price>0;
-    var hasMeta=metric['52WeekHigh']!==undefined;
-    addLog('-> Quote: '+(hasQuote?'$'+price.toFixed(2):'NO DATA')+' | Metric: '+(hasMeta?'OK':'NO DATA'));
-    var techCtx='';
-    if(hasQuote||hasMeta){
-      var dayChg=pc&&price?((price-pc)/pc*100).toFixed(2):'?';
-      // Free tier Finnhub — use 52W range + RSI as trend proxies
-      var w52h=metric['52WeekHigh']?parseFloat(metric['52WeekHigh']).toFixed(2):null;
-      var w52l=metric['52WeekLow']?parseFloat(metric['52WeekLow']).toFixed(2):null;
-      var beta=metric['beta']?parseFloat(metric['beta']).toFixed(2):null;
-      var vol10=metric['10DayAverageTradingVolume']||null;
-      var rsi=metric['rsi14d']?parseFloat(metric['rsi14d']).toFixed(1):null;
-      var w52hNum=w52h?parseFloat(w52h):null;
-      var w52lNum=w52l?parseFloat(w52l):null;
-      var pctFrom52h=w52h?((price-w52hNum)/w52hNum*100).toFixed(1):null;
-      var pctFrom52l=w52l?((price-w52lNum)/w52lNum*100).toFixed(1):null;
-      var rangePos=null;
-      if(w52hNum&&w52lNum&&w52hNum>w52lNum&&price>0){
-        var rawPos=((price-w52lNum)/(w52hNum-w52lNum)*100);
-        rangePos=(rawPos>=-50&&rawPos<=200)?rawPos.toFixed(0):null;
-      }
-      var trendSignal=rangePos?(parseFloat(rangePos)>=60?'UPPER RANGE — bullish momentum':parseFloat(rangePos)>=40?'MID RANGE — neutral':'LOWER RANGE — bearish pressure'):'unknown';
-      var bullStack=rangePos&&parseFloat(rangePos)>=60;
-      var rsiZone=rsi?(parseFloat(rsi)>=50&&parseFloat(rsi)<=70?'MOMENTUM ZONE 50-70':parseFloat(rsi)>70?'OVERBOUGHT >70':'WEAK <50'):'not available';
-      addLog('-> 52W Position: '+(rangePos||'?')+'% ('+trendSignal+') | RSI: '+(rsi||'?'));
-      var volStr = vol10 ? (' | 10d Avg Volume=' + (vol10 > 1 ? vol10.toFixed(1) + 'M shares' : vol10 + 'M') + ' daily') : '';
-      var rsiStr = rsi ? (' | RSI=' + rsi + ' ' + rsiZone) : '';
-      var w52hStr = w52h ? (' | 52W High=$' + w52h + ' (' + pctFrom52h + '% from high)') : '';
-      var w52lStr = w52l ? (' | 52W Low=$' + w52l) : '';
-      var betaStr = beta ? (' | Beta=' + beta) : '';
-      var bullStr = bullStack ? 'LIKELY — price in upper 52W range' : 'UNCERTAIN — price in lower 52W range';
-      var rsiStr2=rsi?' | RSI='+rsi+' '+rsiZone:'';
-      var betaStr2=beta?' | Beta='+beta:'';
-      var volStr2=vol10?' | 10d Avg Vol='+vol10.toFixed(1)+'M':'';
-      techCtx = 'LIVE TECHNICALS from Finnhub:'
-        + ' Price=$'+(price?price.toFixed(2):'?')+' (Day: '+(dayChg>=0?'+':'')+dayChg+'%)'
-        + (w52h?' | 52W High=$'+w52h+' ('+pctFrom52h+'% from high)':'')
-        + (w52l?' | 52W Low=$'+w52l+' (+'+pctFrom52l+'% above low)':'')
-        + (rangePos?' | 52W Range Position: '+rangePos+'% — '+trendSignal:'')
-        + (bullStack?' | TREND: BULLISH (upper 52W range)':' | TREND: NEUTRAL/BEARISH (lower 52W range)')
-        + rsiStr2 + betaStr2 + volStr2
-        + ' | Use web_search to verify current MA50/MA200 for '+ticker;
-    } else {
-      techCtx='No live technical data from Finnhub for '+ticker+'. Use web_search to find current price and 52W range before analyzing.';
-      addLog('-> No technical data — Sonnet will search');
-    }
-    return buildDeepDive();
-    function buildDeepDive(){
-    var sys='You are Learning Portfolio AI — combining fundamental analysis with technical momentum confirmation. '
-      +'The sheep (retail + algorithmic momentum traders) follow MAs, RSI, and breakouts — use their momentum with you. '
-      +'Confidence threshold 80%. Below 80% set declined:true. Respond ONLY in valid JSON, no markdown.';
-    var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr
-      +' '+techCtx
-      +' Deep dive on '+ticker+'. Assess: (1) fundamental thesis and catalyst, '
-      +'(2) technical confirmation — is bull stack in place? RSI in momentum zone? Volume expanding? Are the sheep moving with us? '
-      +'(3) adversarial challenge. (4) final conviction. '
-      +'IMPORTANT: If bull stack is YES and RSI is in momentum zone (50-70), this AUTOMATICALLY satisfies Rule 1 criterion (B) — do NOT decline for missing catalyst. '
-      +'Technicals AGAINST thesis (below MA50, RSI<40, MACD negative) = reduce confidence 10-15pts. '
-      +'Technicals ALIGNED (bull stack, RSI 50-70, volume>1.2x) = increase confidence 5-10pts. '
-      +'A bull stack + momentum RSI + expanding volume = STRONG BUY signal regardless of catalyst. '
-      +'Return JSON: {"ticker":"'+ticker+'","action":"BUY","entry_price":0,"target_price":0,'
-      +'"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,'
-      +'"declined":false,"decline_reason":null,'
-      +'"chain_of_thought":"400-600 words: fundamental thesis, catalyst check, technical analysis (MAs/RSI/MACD/volume — are the sheep aligned?), adversarial challenge, final conviction",'
-      +'"adversarial_response":"3 strongest objections",'
-      +'"reasoning":"100-150 word thesis combining fundamental and technical view",'
-      +'"key_risk":"biggest risk 1-2 sentences",'
-      +'"technical_score":"bull_stack|partial|bearish",'
-      +'"regime_context":"'+(regime?regime.label:'unknown')+'",'
-      +'"date":"'+new Date().toISOString()+'"}';
-    return ai(sys, usr, 3000);
-    } // end buildDeepDive
-  }).then(function(raw2) {
-    if (!raw2) throw new Error('Empty deep dive response');
-    var pick = pj(raw2);
-    if (pick.confidence !== undefined && pick.confidence <= 1) {
-      pick.confidence = Math.round(pick.confidence * 100);
-    }
-    // Enforce 80% gate
-    if (!pick.declined && (pick.confidence || 0) < 80) {
-      pick.declined = true;
-      pick.decline_reason = 'Confidence ' + (pick.confidence || 0) + '% below 80% threshold';
-    }
-    // Final dupe check
-    var finalHeld = getAllHeld();
-    if (!pick.declined && finalHeld.indexOf(pick.ticker) >= 0) {
-      pick.declined = true;
-      pick.decline_reason = pick.ticker + ' already in Learning Portfolio';
-    }
-    if (pick.declined) {
-      declined++;
-      addLog('x Declined: ' + (pick.decline_reason || '').substring(0, 70));
-      pick.id = Date.now().toString();
-      pB.push(pick);
-      completed++;
-      return gput(STUDY, 'portfolio_b.json', pB).then(function() {
-        renderB(); updateBar(); setTimeout(runNext, 1500);
-      });
-    }
-    // Fetch real price
-    return getprice(pick.ticker).then(function(livePrice) {
-      if (livePrice) {
-        var se = pick.entry_price || 0;
-        pick.entry_price = livePrice;
-        if (se > 0) {
-          var tgt = pick.target_price ? Math.min(Math.max((pick.target_price - se) / se, 0.03), 0.20) : 0.08;
-          var stp = pick.stop_loss ? Math.min(Math.max((se - pick.stop_loss) / se, 0.02), 0.10) : 0.05;
-          pick.target_price = parseFloat((livePrice * (1 + tgt)).toFixed(2));
-          pick.stop_loss = parseFloat((livePrice * (1 - stp)).toFixed(2));
-        } else {
-          pick.target_price = parseFloat((livePrice * 1.08).toFixed(2));
-          pick.stop_loss = parseFloat((livePrice * 0.95).toFixed(2));
+        return buildDeepDive();
+        function buildDeepDive(){
+        var sys='You are Learning Portfolio AI — combining fundamental analysis with technical momentum confirmation. '
+          +'The sheep (retail + algorithmic momentum traders) follow MAs, RSI, and breakouts — use their momentum with you. '
+          +'Confidence threshold 80%. Below 80% set declined:true. Respond ONLY in valid JSON, no markdown.';
+        var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr
+          +' '+techCtx
+          +' Deep dive on '+ticker+'. Assess: (1) fundamental thesis and catalyst, '
+          +'(2) technical confirmation — is bull stack in place? RSI in momentum zone? Volume expanding? Are the sheep moving with us? '
+          +'(3) adversarial challenge. (4) final conviction. '
+          +'IMPORTANT: If bull stack is YES and RSI is in momentum zone (50-70), this AUTOMATICALLY satisfies Rule 1 criterion (B) — do NOT decline for missing catalyst. '
+          +'Technicals AGAINST thesis (below MA50, RSI<40, MACD negative) = reduce confidence 10-15pts. '
+          +'Technicals ALIGNED (bull stack, RSI 50-70, volume>1.2x) = increase confidence 5-10pts. '
+          +'A bull stack + momentum RSI + expanding volume = STRONG BUY signal regardless of catalyst. '
+          +'Return JSON: {"ticker":"'+ticker+'","action":"BUY","entry_price":0,"target_price":0,'
+          +'"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,'
+          +'"declined":false,"decline_reason":null,'
+          +'"chain_of_thought":"400-600 words: fundamental thesis, catalyst check, technical analysis (MAs/RSI/MACD/volume — are the sheep aligned?), adversarial challenge, final conviction",'
+          +'"adversarial_response":"3 strongest objections",'
+          +'"reasoning":"100-150 word thesis combining fundamental and technical view",'
+          +'"key_risk":"biggest risk 1-2 sentences",'
+          +'"technical_score":"bull_stack|partial|bearish",'
+          +'"regime_context":"'+(regime?regime.label:'unknown')+'",'
+          +'"date":"'+new Date().toISOString()+'"}';
+        return ai(sys, usr, 2000);
+        } // end buildDeepDive
+      }).then(function(raw2) {
+        if (!raw2) throw new Error('Empty deep dive response');
+        var pick = pj(raw2);
+        if (pick.confidence !== undefined && pick.confidence <= 1) {
+          pick.confidence = Math.round(pick.confidence * 100);
         }
-        pick.price_source = 'finnhub_live';
-        pick.price_fetched_at = new Date().toISOString();
-      }
-      pick.id = Date.now().toString();
-      pick.generation = currentGenId; // tag with current generation
-      pB.push(pick);
-      sessionHeld.push(pick.ticker); // track in session
-      // Update generation tickers list
-      var curGen = generations.generations.find(function(g){ return g.id === currentGenId; });
-      if (curGen && curGen.tickers.indexOf(pick.ticker) < 0) curGen.tickers.push(pick.ticker);
-      published++;
-      addLog('+ ' + pick.ticker + ' @ $' + (pick.entry_price ? pick.entry_price.toFixed(2) : '?') + ' — ' + pick.confidence + '% conf');
-      completed++;
-      return gput(STUDY, 'portfolio_b.json', pB).then(function() {
-        renderB(); updateBar(); setTimeout(runNext, 2000);
-      });
-    });
-  });
-          })(_ticker, {c:price||0,pc:0});
-      }).catch(function(e){
-        addLog('-> Price error, proceeding: '+(e.message||''));
-        return (function(ticker, preloadedQuote){
-  // Step 2: fetch live technicals via quote + metric (both free tier)
-  addLog('-> Fetching live technicals for ' + ticker + '...');
-  return Promise.all([
-    preloadedQuote && preloadedQuote.c ? Promise.resolve(preloadedQuote) : fh('quote?symbol='+ticker),
-    fh('stock/metric?symbol='+ticker+'&metric=all')
-  ]).then(function(techRes){
-    var quote=techRes[0]||{}, metric=(techRes[1]&&techRes[1].metric)||{};
-    var price=quote.c||0, pc=quote.pc||0;
-    if(!price&&metric) price=metric['currentPrice']||metric['latestPrice']||0;
-    var hasQuote=price>0;
-    var hasMeta=metric['52WeekHigh']!==undefined;
-    addLog('-> Quote: '+(hasQuote?'$'+price.toFixed(2):'NO DATA')+' | Metric: '+(hasMeta?'OK':'NO DATA'));
-    var techCtx='';
-    if(hasQuote||hasMeta){
-      var dayChg=pc&&price?((price-pc)/pc*100).toFixed(2):'?';
-      // Free tier Finnhub — use 52W range + RSI as trend proxies
-      var w52h=metric['52WeekHigh']?parseFloat(metric['52WeekHigh']).toFixed(2):null;
-      var w52l=metric['52WeekLow']?parseFloat(metric['52WeekLow']).toFixed(2):null;
-      var beta=metric['beta']?parseFloat(metric['beta']).toFixed(2):null;
-      var vol10=metric['10DayAverageTradingVolume']||null;
-      var rsi=metric['rsi14d']?parseFloat(metric['rsi14d']).toFixed(1):null;
-      var w52hNum=w52h?parseFloat(w52h):null;
-      var w52lNum=w52l?parseFloat(w52l):null;
-      var pctFrom52h=w52h?((price-w52hNum)/w52hNum*100).toFixed(1):null;
-      var pctFrom52l=w52l?((price-w52lNum)/w52lNum*100).toFixed(1):null;
-      var rangePos=null;
-      if(w52hNum&&w52lNum&&w52hNum>w52lNum&&price>0){
-        var rawPos=((price-w52lNum)/(w52hNum-w52lNum)*100);
-        rangePos=(rawPos>=-50&&rawPos<=200)?rawPos.toFixed(0):null;
-      }
-      var trendSignal=rangePos?(parseFloat(rangePos)>=60?'UPPER RANGE — bullish momentum':parseFloat(rangePos)>=40?'MID RANGE — neutral':'LOWER RANGE — bearish pressure'):'unknown';
-      var bullStack=rangePos&&parseFloat(rangePos)>=60;
-      var rsiZone=rsi?(parseFloat(rsi)>=50&&parseFloat(rsi)<=70?'MOMENTUM ZONE 50-70':parseFloat(rsi)>70?'OVERBOUGHT >70':'WEAK <50'):'not available';
-      addLog('-> 52W Position: '+(rangePos||'?')+'% ('+trendSignal+') | RSI: '+(rsi||'?'));
-      var volStr = vol10 ? (' | 10d Avg Volume=' + (vol10 > 1 ? vol10.toFixed(1) + 'M shares' : vol10 + 'M') + ' daily') : '';
-      var rsiStr = rsi ? (' | RSI=' + rsi + ' ' + rsiZone) : '';
-      var w52hStr = w52h ? (' | 52W High=$' + w52h + ' (' + pctFrom52h + '% from high)') : '';
-      var w52lStr = w52l ? (' | 52W Low=$' + w52l) : '';
-      var betaStr = beta ? (' | Beta=' + beta) : '';
-      var bullStr = bullStack ? 'LIKELY — price in upper 52W range' : 'UNCERTAIN — price in lower 52W range';
-      var rsiStr2=rsi?' | RSI='+rsi+' '+rsiZone:'';
-      var betaStr2=beta?' | Beta='+beta:'';
-      var volStr2=vol10?' | 10d Avg Vol='+vol10.toFixed(1)+'M':'';
-      techCtx = 'LIVE TECHNICALS from Finnhub:'
-        + ' Price=$'+(price?price.toFixed(2):'?')+' (Day: '+(dayChg>=0?'+':'')+dayChg+'%)'
-        + (w52h?' | 52W High=$'+w52h+' ('+pctFrom52h+'% from high)':'')
-        + (w52l?' | 52W Low=$'+w52l+' (+'+pctFrom52l+'% above low)':'')
-        + (rangePos?' | 52W Range Position: '+rangePos+'% — '+trendSignal:'')
-        + (bullStack?' | TREND: BULLISH (upper 52W range)':' | TREND: NEUTRAL/BEARISH (lower 52W range)')
-        + rsiStr2 + betaStr2 + volStr2
-        + ' | Use web_search to verify current MA50/MA200 for '+ticker;
-    } else {
-      techCtx='No live technical data from Finnhub for '+ticker+'. Use web_search to find current price and 52W range before analyzing.';
-      addLog('-> No technical data — Sonnet will search');
-    }
-    return buildDeepDive();
-    function buildDeepDive(){
-    var sys='You are Learning Portfolio AI — combining fundamental analysis with technical momentum confirmation. '
-      +'The sheep (retail + algorithmic momentum traders) follow MAs, RSI, and breakouts — use their momentum with you. '
-      +'Confidence threshold 80%. Below 80% set declined:true. Respond ONLY in valid JSON, no markdown.';
-    var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr
-      +' '+techCtx
-      +' Deep dive on '+ticker+'. Assess: (1) fundamental thesis and catalyst, '
-      +'(2) technical confirmation — is bull stack in place? RSI in momentum zone? Volume expanding? Are the sheep moving with us? '
-      +'(3) adversarial challenge. (4) final conviction. '
-      +'IMPORTANT: If bull stack is YES and RSI is in momentum zone (50-70), this AUTOMATICALLY satisfies Rule 1 criterion (B) — do NOT decline for missing catalyst. '
-      +'Technicals AGAINST thesis (below MA50, RSI<40, MACD negative) = reduce confidence 10-15pts. '
-      +'Technicals ALIGNED (bull stack, RSI 50-70, volume>1.2x) = increase confidence 5-10pts. '
-      +'A bull stack + momentum RSI + expanding volume = STRONG BUY signal regardless of catalyst. '
-      +'Return JSON: {"ticker":"'+ticker+'","action":"BUY","entry_price":0,"target_price":0,'
-      +'"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,'
-      +'"declined":false,"decline_reason":null,'
-      +'"chain_of_thought":"400-600 words: fundamental thesis, catalyst check, technical analysis (MAs/RSI/MACD/volume — are the sheep aligned?), adversarial challenge, final conviction",'
-      +'"adversarial_response":"3 strongest objections",'
-      +'"reasoning":"100-150 word thesis combining fundamental and technical view",'
-      +'"key_risk":"biggest risk 1-2 sentences",'
-      +'"technical_score":"bull_stack|partial|bearish",'
-      +'"regime_context":"'+(regime?regime.label:'unknown')+'",'
-      +'"date":"'+new Date().toISOString()+'"}';
-    return ai(sys, usr, 3000);
-    } // end buildDeepDive
-  }).then(function(raw2) {
-    if (!raw2) throw new Error('Empty deep dive response');
-    var pick = pj(raw2);
-    if (pick.confidence !== undefined && pick.confidence <= 1) {
-      pick.confidence = Math.round(pick.confidence * 100);
-    }
-    // Enforce 80% gate
-    if (!pick.declined && (pick.confidence || 0) < 80) {
-      pick.declined = true;
-      pick.decline_reason = 'Confidence ' + (pick.confidence || 0) + '% below 80% threshold';
-    }
-    // Final dupe check
-    var finalHeld = getAllHeld();
-    if (!pick.declined && finalHeld.indexOf(pick.ticker) >= 0) {
-      pick.declined = true;
-      pick.decline_reason = pick.ticker + ' already in Learning Portfolio';
-    }
-    if (pick.declined) {
-      declined++;
-      addLog('x Declined: ' + (pick.decline_reason || '').substring(0, 70));
-      pick.id = Date.now().toString();
-      pB.push(pick);
-      completed++;
-      return gput(STUDY, 'portfolio_b.json', pB).then(function() {
-        renderB(); updateBar(); setTimeout(runNext, 1500);
-      });
-    }
-    // Fetch real price
-    return getprice(pick.ticker).then(function(livePrice) {
-      if (livePrice) {
-        var se = pick.entry_price || 0;
-        pick.entry_price = livePrice;
-        if (se > 0) {
-          var tgt = pick.target_price ? Math.min(Math.max((pick.target_price - se) / se, 0.03), 0.20) : 0.08;
-          var stp = pick.stop_loss ? Math.min(Math.max((se - pick.stop_loss) / se, 0.02), 0.10) : 0.05;
-          pick.target_price = parseFloat((livePrice * (1 + tgt)).toFixed(2));
-          pick.stop_loss = parseFloat((livePrice * (1 - stp)).toFixed(2));
-        } else {
-          pick.target_price = parseFloat((livePrice * 1.08).toFixed(2));
-          pick.stop_loss = parseFloat((livePrice * 0.95).toFixed(2));
+        // Enforce 80% gate
+        if (!pick.declined && (pick.confidence || 0) < 80) {
+          pick.declined = true;
+          pick.decline_reason = 'Confidence ' + (pick.confidence || 0) + '% below 80% threshold';
         }
-        pick.price_source = 'finnhub_live';
-        pick.price_fetched_at = new Date().toISOString();
-      }
-      pick.id = Date.now().toString();
-      pick.generation = currentGenId; // tag with current generation
-      pB.push(pick);
-      sessionHeld.push(pick.ticker); // track in session
-      // Update generation tickers list
-      var curGen = generations.generations.find(function(g){ return g.id === currentGenId; });
-      if (curGen && curGen.tickers.indexOf(pick.ticker) < 0) curGen.tickers.push(pick.ticker);
-      published++;
-      addLog('+ ' + pick.ticker + ' @ $' + (pick.entry_price ? pick.entry_price.toFixed(2) : '?') + ' — ' + pick.confidence + '% conf');
-      completed++;
-      return gput(STUDY, 'portfolio_b.json', pB).then(function() {
-        renderB(); updateBar(); setTimeout(runNext, 2000);
+        // Final dupe check
+        var finalHeld = getAllHeld();
+        if (!pick.declined && finalHeld.indexOf(pick.ticker) >= 0) {
+          pick.declined = true;
+          pick.decline_reason = pick.ticker + ' already in Learning Portfolio';
+        }
+        if (pick.declined) {
+          declined++;
+          addLog('x Declined: ' + (pick.decline_reason || '').substring(0, 70));
+          pick.id = Date.now().toString();
+          pB.push(pick);
+          completed++;
+          return gput(STUDY, 'portfolio_b.json', pB).then(function() {
+            renderB(); updateBar(); setTimeout(runNext, 1500);
+          });
+        }
+        // Fetch real price
+        return getprice(pick.ticker).then(function(livePrice) {
+          if (livePrice) {
+            var se = pick.entry_price || 0;
+            pick.entry_price = livePrice;
+            if (se > 0) {
+              var tgt = pick.target_price ? Math.min(Math.max((pick.target_price - se) / se, 0.03), 0.20) : 0.08;
+              var stp = pick.stop_loss ? Math.min(Math.max((se - pick.stop_loss) / se, 0.02), 0.10) : 0.05;
+              pick.target_price = parseFloat((livePrice * (1 + tgt)).toFixed(2));
+              pick.stop_loss = parseFloat((livePrice * (1 - stp)).toFixed(2));
+            } else {
+              pick.target_price = parseFloat((livePrice * 1.08).toFixed(2));
+              pick.stop_loss = parseFloat((livePrice * 0.95).toFixed(2));
+            }
+            pick.price_source = 'finnhub_live';
+            pick.price_fetched_at = new Date().toISOString();
+          }
+          pick.id = Date.now().toString();
+          pick.generation = currentGenId; // tag with current generation
+          pB.push(pick);
+          sessionHeld.push(pick.ticker); // track in session
+          // Update generation tickers list
+          var curGen = generations.generations.find(function(g){ return g.id === currentGenId; });
+          if (curGen && curGen.tickers.indexOf(pick.ticker) < 0) curGen.tickers.push(pick.ticker);
+          published++;
+          addLog('+ ' + pick.ticker + ' @ $' + (pick.entry_price ? pick.entry_price.toFixed(2) : '?') + ' — ' + pick.confidence + '% conf');
+          completed++;
+          return gput(STUDY, 'portfolio_b.json', pB).then(function() {
+            renderB(); updateBar(); setTimeout(runNext, 2000);
+          });
+        });
       });
-    });
-  });
-          })(_ticker, {});
-      });
-    }).catch(function(e){
+    }).catch(function(e) {
       addLog('x Error: ' + e.message.substring(0, 70));
-      declined++; updateBar(); setTimeout(runNext, 1500);
+      completed++;
+      updateBar();
+      setTimeout(runNext, 1500);
     });
-
-
-
+  }
 });
+
 // ── COMPARE ──────────────────────────────────────────────
 function renderCmp(){
   var amap={};
@@ -1125,8 +910,6 @@ function renderCmp(){
   var real=pB.filter(function(p){ return !p.declined; });
   var divs=real.filter(function(p){ var a=amap[p.ticker]; return a&&a.action&&p.action&&a.action!==p.action; });
   document.getElementById('divs').innerHTML=divs.length?'<div class="slabel" style="margin-top:0">⚡ Divergences</div>'+divs.map(function(p){ var a=amap[p.ticker]; return '<div class="divrow">⚡ <strong>'+p.ticker+'</strong> — A: '+badg(a.action)+' · B: '+badg(p.action)+' ('+p.confidence+'% conf)</div>'; }).join(''):'';
-  }
-
   function tbl(rows,hs){ if(!rows.length) return '<div class="empty"><div class="ei">📋</div><div class="et">No picks</div></div>'; return '<div class="tw"><table><thead><tr>'+hs.map(function(h){ return '<th>'+h+'</th>'; }).join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'; }
   document.getElementById('cmp-a').innerHTML=tbl(pA.slice(-25).reverse().map(function(p){ var ret=parseFloat(p.return_pct); return '<tr><td class="tsym">'+p.ticker+'</td><td>'+badg(p.action)+'</td><td>'+(!isNaN(ret)?pnl(ret):'—')+'</td></tr>'; }),['Ticker','Action','Return']);
   document.getElementById('cmp-b').innerHTML=tbl(real.slice().reverse().map(function(p){ return '<tr><td class="tsym">'+p.ticker+'</td><td>'+badg(p.action||'?')+'</td><td style="color:var(--p);font-family:DM Mono,monospace">'+(p.confidence||0)+'%</td><td>'+(p.return_pct!==undefined?pnl(p.return_pct):'—')+'</td></tr>'; }),['Ticker','Action','Conf','Return']);
@@ -1890,4 +1673,72 @@ function initApp(){
 }
 </script>
 </body>
-</html>
+</html>      <!-- PANEL B -->
+      <div id="panel-b" class="tab-panel" style="display:none">
+
+        <!-- Generation Header Bar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <h2 style="font-size:18px;font-weight:700;margin:0">Learning Portfolio</h2>
+            <span id="gen-badge" style="background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">Gen 1</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="gen-selector" onchange="switchGeneration(this.value)" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;background:var(--card);color:var(--text);cursor:pointer">
+            </select>
+            <button onclick="createNewGeneration()" style="padding:7px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">+ New Generation</button>
+          </div>
+        </div>
+
+        <!-- Generation Info Card -->
+        <div id="gen-info-card" class="ibox" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div>
+            <div id="gen-title" style="font-weight:700;font-size:14px">Generation 1</div>
+            <div id="gen-desc" style="font-size:12px;color:var(--text3);margin-top:2px">Initial picks — no learned rules applied</div>
+          </div>
+          <div style="display:flex;gap:20px;text-align:center">
+            <div><div id="gen-stat-picks" style="font-size:18px;font-weight:800;color:var(--accent)">0</div><div style="font-size:10px;color:var(--text3)">PICKS</div></div>
+            <div><div id="gen-stat-open" style="font-size:18px;font-weight:800;color:var(--g)">0</div><div style="font-size:10px;color:var(--text3)">OPEN</div></div>
+            <div><div id="gen-stat-closed" style="font-size:18px;font-weight:800;color:var(--text2)">0</div><div style="font-size:10px;color:var(--text3)">CLOSED</div></div>
+            <div><div id="gen-stat-return" style="font-size:18px;font-weight:800">—</div><div style="font-size:10px;color:var(--text3)">AVG RETURN</div></div>
+            <div><div id="gen-stat-rules" style="font-size:18px;font-weight:800;color:var(--accent)">0</div><div style="font-size:10px;color:var(--text3)">RULES</div></div>
+          </div>
+        </div>
+
+        <!-- Rules Snapshot for this generation -->
+        <div id="gen-rules-card" style="display:none;margin-bottom:16px">
+          <div class="ibox">
+            <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">RULES APPLIED TO THIS GENERATION</div>
+            <div id="gen-rules-list" style="font-size:12px;color:var(--text3);line-height:1.8"></div>
+          </div>
+        </div>
+
+        <!-- Pick Generator -->
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="font-size:14px;font-weight:700">Generate Picks — Learning AI</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <select id="pick-count" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;background:var(--card);color:var(--text)">
+                <option value="1">1 Pick</option>
+                <option value="3">3 Picks</option>
+                <option value="5" selected>5 Picks</option>
+                <option value="10">10 Picks</option>
+              </select>
+              <button id="genbtn" onclick="genPicks()" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Generate</button>
+            </div>
+          </div>
+          <div id="gen-progress" style="display:none">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:6px">
+              <span id="gen-status">Starting…</span>
+              <span id="gen-count">0/0</span>
+            </div>
+            <div style="background:var(--border);border-radius:4px;height:4px;margin-bottom:10px">
+              <div id="gen-bar" style="background:var(--accent);height:4px;border-radius:4px;width:0%;transition:width 0.3s"></div>
+            </div>
+            <div id="gen-log" style="font-size:11px;color:var(--text3);font-family:DM Mono,monospace;max-height:120px;overflow-y:auto"></div>
+          </div>
+        </div>
+
+        <!-- Picks for current generation -->
+        <div id="gen-picks-container"></div>
+
+
