@@ -484,8 +484,10 @@ function ai(sys,usr,tok){
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:tok,system:sys,messages:[{role:'user',content:usr}]})
   }).then(function(r){ return r.json(); }).then(function(d){
-    if(d.error) throw new Error(d.error.message);
-    return d.content&&d.content[0]?d.content[0].text:'';
+    if(d.error) throw new Error(d.error.message||JSON.stringify(d.error));
+    // Find text block — web search adds tool_use blocks before the text
+    var textBlock = d.content && d.content.find(function(b){ return b.type==='text'; });
+    return textBlock ? textBlock.text : '';
   });
 }
 function pj(s){
