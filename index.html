@@ -771,10 +771,29 @@ document.getElementById('genbtn').addEventListener('click', function() {
 
       addLog('-> ' + ticker + ': ' + (nom.reason || '').substring(0, 70));
 
+      // Step 1.5: quick price check — skip if Finnhub has no data (OTC/illiquid/unknown)
+      return fh('quote?symbol='+ticker).then(function(qck){
+        var qPrice = qck && qck.c ? qck.c : 0;
+        if(!qPrice){
+          declined++;
+          addLog('x '+ticker+' — no price data on free tier (likely OTC/illiquid), skipping');
+          completed++; updateBar(); setTimeout(runNext, 500);
+          return;
+        }
+        addLog('-> Price confirmed: $'+qPrice.toFixed(2)+' — proceeding to deep dive');
+        return doDeepDive(qck);
+      }).catch(function(){ return doDeepDive({}); });
+    }).catch(function(e){
+      addLog('x Error: ' + e.message.substring(0, 70));
+      completed++; updateBar(); setTimeout(runNext, 1500);
+    });
+  }
+
+  function doDeepDive(preloadedQuote){
       // Step 2: fetch live technicals via quote + metric (both free tier)
       addLog('-> Fetching live technicals for ' + ticker + '...');
       return Promise.all([
-        fh('quote?symbol='+ticker),
+        preloadedQuote && preloadedQuote.c ? Promise.resolve(preloadedQuote) : fh('quote?symbol='+ticker),
         fh('stock/metric?symbol='+ticker+'&metric=all')
       ]).then(function(techRes){
         var quote=techRes[0]||{}, metric=(techRes[1]&&techRes[1].metric)||{};
@@ -911,12 +930,6 @@ document.getElementById('genbtn').addEventListener('click', function() {
           });
         });
       });
-    }).catch(function(e) {
-      addLog('x Error: ' + e.message.substring(0, 70));
-      completed++;
-      updateBar();
-      setTimeout(runNext, 1500);
-    });
   }
 });
 
