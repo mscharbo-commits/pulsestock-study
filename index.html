@@ -478,14 +478,25 @@ function gput(repo,path,data){
 // CLAUDE
 function ai(sys,usr,tok){
   tok=tok||2000;
-  // Calls go through /api/claude — API key stays server-side in Vercel env vars
   return fetch('/api/claude',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:tok,system:sys,messages:[{role:'user',content:usr}]})
   }).then(function(r){ return r.json(); }).then(function(d){
     if(d.error) throw new Error(d.error.message||JSON.stringify(d.error));
-    // Find text block — web search adds tool_use blocks before the text
+    var textBlock = d.content && d.content.find(function(b){ return b.type==='text'; });
+    return textBlock ? textBlock.text : '';
+  });
+}
+function aiSearch(sys,usr,tok){
+  // Like ai() but enables web search — use for nomination and current-events questions
+  tok=tok||1000;
+  return fetch('/api/claude',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:tok,use_search:true,system:sys,messages:[{role:'user',content:usr}]})
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if(d.error) throw new Error(d.error.message||JSON.stringify(d.error));
     var textBlock = d.content && d.content.find(function(b){ return b.type==='text'; });
     return textBlock ? textBlock.text : '';
   });
@@ -736,7 +747,7 @@ document.getElementById('genbtn').addEventListener('click', function() {
       + ' Nominate ONE stock NOT on the blacklist with high conviction today.'
       + ' Return ONLY: {"ticker":"SYMBOL","reason":"one sentence"}';
 
-    ai(nomSys, nomUsr, 250).then(function(nomRaw) {
+    aiSearch(nomSys, nomUsr, 300).then(function(nomRaw) {
       if (!nomRaw) throw new Error('Empty nomination');
       var nom;
       try { nom = pj(nomRaw); } catch(e) {
