@@ -795,12 +795,17 @@ document.getElementById('genbtn').addEventListener('click', function() {
           var w52lStr = w52l ? (' | 52W Low=$' + w52l) : '';
           var betaStr = beta ? (' | Beta=' + beta) : '';
           var bullStr = bullStack ? 'LIKELY — price in upper 52W range' : 'UNCERTAIN — price in lower 52W range';
-          techCtx = 'LIVE TECHNICALS from Finnhub (real data, not estimates):'
-            + ' Price=$' + (price ? price.toFixed(2) : '?') + ' (Day: ' + (dayChg >= 0 ? '+' : '') + dayChg + '%)'
-            + ' | MA50=$' + (ma50 || 'n/a') + ' (' + (a50 ? 'ABOVE — bullish' : 'BELOW — bearish') + ')'
-            + ' | MA200=$' + (ma200 || 'n/a') + ' (' + (a200 ? 'ABOVE — bull trend' : 'BELOW — downtrend') + ')'
-            + ' | BULL STACK: ' + bullStr
-            + rsiStr + w52hStr + w52lStr + betaStr + volStr;
+          var rsiStr2=rsi?' | RSI='+rsi+' '+rsiZone:'';
+          var betaStr2=beta?' | Beta='+beta:'';
+          var volStr2=vol10?' | 10d Avg Vol='+vol10.toFixed(1)+'M':'';
+          techCtx = 'LIVE TECHNICALS from Finnhub:'
+            + ' Price=$'+(price?price.toFixed(2):'?')+' (Day: '+(dayChg>=0?'+':'')+dayChg+'%)'
+            + (w52h?' | 52W High=$'+w52h+' ('+pctFrom52h+'% from high)':'')
+            + (w52l?' | 52W Low=$'+w52l+' (+'+pctFrom52l+'% above low)':'')
+            + (rangePos?' | 52W Range Position: '+rangePos+'% — '+trendSignal:'')
+            + (bullStack?' | TREND: BULLISH (upper 52W range)':' | TREND: NEUTRAL/BEARISH (lower 52W range)')
+            + rsiStr2 + betaStr2 + volStr2
+            + ' | Use web_search to verify current MA50/MA200 for '+ticker;
         } else {
           techCtx='No technical data available. Do NOT estimate. Base confidence on fundamentals and regime only.';
           addLog('-> No technical data — Sonnet will use fundamentals only');
