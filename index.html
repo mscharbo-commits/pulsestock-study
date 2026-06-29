@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782770483 -->
+<!-- v1782770858 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -687,11 +687,12 @@ document.getElementById('genbtn').addEventListener('click', function() {
     logEl.innerHTML = msg + '<br>' + logEl.innerHTML;
   }
   function updateBar() {
-    barEl.style.width = (total > 0 ? (published / total * 100) : 0) + '%';
+    var pct = total > 0 ? Math.round(published / total * 100) : 0;
+    barEl.style.width = pct + '%';
     countEl.textContent = published + '/' + total;
-    statusEl.textContent = published < total
-      ? 'Published ' + published + '/' + total + ' (attempt ' + (attempts||1) + ', declined: ' + declined + ')'
-      : 'Done — ' + published + ' published, ' + declined + ' declined';
+    statusEl.textContent = published >= total
+      ? 'Done — ' + published + ' published, ' + declined + ' declined'
+      : 'Attempt ' + (attempts||1) + ' — ' + published + ' published, ' + declined + ' declined';
   }
   function getAllHeld() {
     var fromPB = pB.filter(function(p){ return !p.declined; }).map(function(p){ return p.ticker; });
