@@ -774,26 +774,21 @@ document.getElementById('genbtn').addEventListener('click', function() {
         var techCtx='';
         if(hasQuote||hasMeta){
           var dayChg=pc&&price?((price-pc)/pc*100).toFixed(2):'?';
-          // Finnhub metric field names vary — try multiple
-          var ma50raw = metric['50DayMA'] || metric['ma50'] || metric['sma50'] || null;
-          var ma200raw = metric['200DayMA'] || metric['ma200'] || metric['sma200'] || null;
-          var ma50=ma50raw?parseFloat(ma50raw).toFixed(2):null;
-          var ma200=ma200raw?parseFloat(ma200raw).toFixed(2):null;
+          // Free tier Finnhub — use 52W range + RSI as trend proxies
           var w52h=metric['52WeekHigh']?parseFloat(metric['52WeekHigh']).toFixed(2):null;
           var w52l=metric['52WeekLow']?parseFloat(metric['52WeekLow']).toFixed(2):null;
           var beta=metric['beta']?parseFloat(metric['beta']).toFixed(2):null;
           var vol10=metric['10DayAverageTradingVolume']||null;
-          var a50=ma50&&price>parseFloat(ma50);
-          var a200=ma200&&price>parseFloat(ma200);
-          // MA20 not in metric — estimate from day high/low range vs MA50
-          var ma20est=ma50?( parseFloat(ma50)*1.02).toFixed(2):null; // rough proxy
-          var a20=ma20est&&price>parseFloat(ma20est);
-          var bullStack=a50&&a200;
-          var pctFrom52h=w52h?((price-parseFloat(w52h))/parseFloat(w52h)*100).toFixed(1):null;
-          // RSI from metric if available (Finnhub provides rsi14d)
           var rsi=metric['rsi14d']?parseFloat(metric['rsi14d']).toFixed(1):null;
-          var rsiZone=rsi?(parseFloat(rsi)>=50&&parseFloat(rsi)<=70?'MOMENTUM ZONE 50-70 — trend intact':parseFloat(rsi)>70?'OVERBOUGHT >70 — reversal risk':'WEAK <50 — losing momentum'):'unknown';
-          addLog('-> Bull Stack: '+(bullStack?'YES':'NO')+(rsi?' | RSI: '+rsi:'')+' | MA50: '+(ma50||'?')+' | MA200: '+(ma200||'?'));
+          var w52hNum=w52h?parseFloat(w52h):null;
+          var w52lNum=w52l?parseFloat(w52l):null;
+          var pctFrom52h=w52h?((price-w52hNum)/w52hNum*100).toFixed(1):null;
+          var pctFrom52l=w52l?((price-w52lNum)/w52lNum*100).toFixed(1):null;
+          var rangePos=w52hNum&&w52lNum?((price-w52lNum)/(w52hNum-w52lNum)*100).toFixed(0):null;
+          var trendSignal=rangePos?(parseFloat(rangePos)>=60?'UPPER RANGE — bullish momentum':parseFloat(rangePos)>=40?'MID RANGE — neutral':'LOWER RANGE — bearish pressure'):'unknown';
+          var bullStack=rangePos&&parseFloat(rangePos)>=60;
+          var rsiZone=rsi?(parseFloat(rsi)>=50&&parseFloat(rsi)<=70?'MOMENTUM ZONE 50-70':parseFloat(rsi)>70?'OVERBOUGHT >70':'WEAK <50'):'not available';
+          addLog('-> 52W Position: '+(rangePos||'?')+'% ('+trendSignal+') | RSI: '+(rsi||'?'));
           var volStr = vol10 ? (' | 10d Avg Volume=' + (vol10 > 1 ? vol10.toFixed(1) + 'M shares' : vol10 + 'M') + ' daily') : '';
           var rsiStr = rsi ? (' | RSI=' + rsi + ' ' + rsiZone) : '';
           var w52hStr = w52h ? (' | 52W High=$' + w52h + ' (' + pctFrom52h + '% from high)') : '';
