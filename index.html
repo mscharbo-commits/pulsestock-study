@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782770403 -->
+<!-- v1782770483 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -767,21 +767,26 @@ document.getElementById('genbtn').addEventListener('click', function() {
 
       addLog('-> ' + ticker + ': ' + (nom.reason || '').substring(0, 70));
 
-      // Step 2: fetch live technicals via quote + metric (both free tier)
-      addLog('-> Fetching live technicals for ' + ticker + '...');
-      // Stagger calls to avoid Finnhub rate limiting
-      return fh('quote?symbol='+ticker).then(function(q){
-        return new Promise(function(res){ setTimeout(res, 600); }).then(function(){
-          return fh('stock/metric?symbol='+ticker+'&metric=all').then(function(m){
-            return [q, m];
-          });
-        });
-      }).then(function(techRes){
+      // Step 2: fetch metric + use cached price if available
+      addLog('-> Fetching technicals for ' + ticker + '...');
+      // Use pcache from Live Monitor if available, otherwise try quote
+      var cachedPrice = pcache[ticker] ? pcache[ticker].p : null;
+      var quotePromise = cachedPrice
+        ? Promise.resolve({c: cachedPrice, pc: 0})
+        : fh('quote?symbol='+ticker).then(function(q){
+            if(q&&q.c) pcache[ticker]={p:q.c,t:Date.now()};
+            return q||{};
+          }).catch(function(){ return {}; });
+      return Promise.all([
+        quotePromise,
+        fh('stock/metric?symbol='+ticker+'&metric=all')
+      ]).then(function(techRes){
         var quote=techRes[0]||{}, metric=(techRes[1]&&techRes[1].metric)||{};
         var price=quote.c||0, pc=quote.pc||0;
         var hasQuote = price > 0;
         var hasMeta = metric['52WeekHigh'] !== undefined;
-        addLog('-> Quote: '+(hasQuote?'$'+price.toFixed(2):'NO DATA')+' | Metric: '+(hasMeta?'OK':'NO DATA'));
+        if(!hasQuote) addLog('-> No cached price — Sonnet will web_search current price | Metric: '+(hasMeta?'OK':'NO DATA'));
+      else addLog('-> Quote: $'+price.toFixed(2)+' | Metric: '+(hasMeta?'OK':'NO DATA'));
         var techCtx='';
         if(hasQuote||hasMeta){
           var dayChg=pc&&price?((price-pc)/pc*100).toFixed(2):'?';
