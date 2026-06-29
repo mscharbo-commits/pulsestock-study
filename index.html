@@ -774,8 +774,11 @@ document.getElementById('genbtn').addEventListener('click', function() {
         var techCtx='';
         if(hasQuote||hasMeta){
           var dayChg=pc&&price?((price-pc)/pc*100).toFixed(2):'?';
-          var ma50=metric['50DayMA']?parseFloat(metric['50DayMA']).toFixed(2):null;
-          var ma200=metric['200DayMA']?parseFloat(metric['200DayMA']).toFixed(2):null;
+          // Finnhub metric field names vary — try multiple
+          var ma50raw = metric['50DayMA'] || metric['ma50'] || metric['sma50'] || null;
+          var ma200raw = metric['200DayMA'] || metric['ma200'] || metric['sma200'] || null;
+          var ma50=ma50raw?parseFloat(ma50raw).toFixed(2):null;
+          var ma200=ma200raw?parseFloat(ma200raw).toFixed(2):null;
           var w52h=metric['52WeekHigh']?parseFloat(metric['52WeekHigh']).toFixed(2):null;
           var w52l=metric['52WeekLow']?parseFloat(metric['52WeekLow']).toFixed(2):null;
           var beta=metric['beta']?parseFloat(metric['beta']).toFixed(2):null;
@@ -831,7 +834,7 @@ document.getElementById('genbtn').addEventListener('click', function() {
           +'"technical_score":"bull_stack|partial|bearish",'
           +'"regime_context":"'+(regime?regime.label:'unknown')+'",'
           +'"date":"'+new Date().toISOString()+'"}';
-        return ai(sys, usr, 2000);
+        return ai(sys, usr, 3000);
         } // end buildDeepDive
       }).then(function(raw2) {
         if (!raw2) throw new Error('Empty deep dive response');
