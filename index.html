@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782770879 -->
+<!-- v1782771108 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -603,7 +603,7 @@ function renderA(){
 
 // ── PORTFOLIO B ──────────────────────────────────────────
 function loadB(){ return raw(STUDY,'portfolio_b.json').then(function(d){ pB=d||[]; renderB(); }); }
-function renderB(){
+function renderB(){ showGen(curGenId);
   // Also refresh generation picks view
   var gen = generations.generations.find(function(g){ return g.id === currentGenId; });
   if (gen) renderGenerationPicks(gen);
@@ -1681,6 +1681,67 @@ function autoCreateGenerationOnRuleUpdate(newRuleCount) {
     return createNewGeneration();
   }
   return Promise.resolve();
+}
+
+
+// ── GENERATION UI ────────────────────────────────────────
+var gens = {current_generation:1, generations:[]};
+var curGenId = 1;
+
+function loadGens(){
+  raw(STUDY,'generations.json').then(function(d){
+    if(d) gens=d;
+    buildGenSelector();
+    showGen(gens.current_generation||1);
+  }).catch(function(){ buildGenSelector(); });
+}
+function buildGenSelector(){
+  var sel=document.getElementById('gen-selector');
+  if(!sel) return;
+  if(!gens.generations.length){
+    sel.innerHTML='<option value="1">Generation 1 (0 rules)</option>';
+    return;
+  }
+  sel.innerHTML=gens.generations.map(function(g){
+    return '<option value="'+g.id+'"'+(g.id===curGenId?' selected':'')+'>'+g.label+' ('+( g.rule_count||0)+' rules)</option>';
+  }).join('');
+}
+function switchGen(id){
+  curGenId=parseInt(id);
+  showGen(curGenId);
+}
+function showGen(id){
+  curGenId=id;
+  var gen=gens.generations.find(function(g){ return g.id===id; });
+  var badge=document.getElementById('gen-badge');
+  var title=document.getElementById('gen-title');
+  var desc=document.getElementById('gen-desc');
+  var rules=document.getElementById('gs-rules');
+  if(badge) badge.textContent='Gen '+id;
+  if(title) title.textContent=gen?gen.label:'Generation '+id;
+  if(desc) desc.textContent=gen?gen.description:'';
+  if(rules) rules.textContent=gen?(gen.rule_count||0):0;
+  // Filter picks for this generation
+  var picks=pB.filter(function(p){ return !p.declined&&(p.generation===id||(id===1&&!p.generation)); });
+  var open=picks.filter(function(p){ return p.status!=='closed'; }).length;
+  var rets=picks.filter(function(p){ return p.return_pct!==undefined; });
+  var avg=rets.length?(rets.reduce(function(s,p){ return s+p.return_pct; },0)/rets.length).toFixed(1):null;
+  var ps=document.getElementById('gs-picks'); if(ps) ps.textContent=picks.length;
+  var os=document.getElementById('gs-open'); if(os) os.textContent=open;
+  var rs=document.getElementById('gs-ret');
+  if(rs){ rs.textContent=avg!==null?(parseFloat(avg)>=0?'+':'')+avg+'%':'—'; rs.style.color=avg!==null?(parseFloat(avg)>=0?'var(--g)':'var(--r)'):'var(--t2)'; }
+}
+function createNewGen(){
+  var rules=mem.rules||[];
+  var newId=(gens.current_generation||1)+1;
+  gens.generations.push({id:newId,label:'Generation '+newId,created_at:new Date().toISOString(),description:rules.length+' rules applied',rule_count:rules.length,rules_snapshot:rules.slice(),tickers:[]});
+  gens.current_generation=newId;
+  gput(STUDY,'generations.json',gens).then(function(){
+    buildGenSelector();
+    showGen(newId);
+    curGenId=newId;
+    toast('✦ Generation '+newId+' created — generate picks under '+rules.length+' rules');
+  });
 }
 
 // ── INIT ─────────────────────────────────────────────────
