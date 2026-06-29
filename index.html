@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782771156 -->
+<!-- v1782771548 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -262,8 +262,13 @@ tbody td{padding:9px 12px;}
           <div id="gen-log" style="margin-top:8px;font-size:11px;color:var(--t3);font-family:DM Mono,monospace;line-height:1.8;max-height:80px;overflow-y:auto"></div>
         </div>
       </div>
-      <div class="pgrid" id="b-grid"></div>
-      <div id="b-empty" class="empty"><div class="ei">🧪</div><div class="et">No Learning Portfolio picks yet</div><div class="es">Generate your first pick above</div></div>
+      <!-- Generation filtered picks -->
+      <div id="gen-picks-wrap" style="margin-top:16px">
+        <div id="gen-picks-grid" class="pgrid"></div>
+        <div id="gen-picks-empty" class="empty" style="display:none"><div class="ei">🧪</div><div class="et">No picks in this generation yet</div><div class="es">Generate picks above</div></div>
+      </div>
+      <div class="pgrid" id="b-grid" style="display:none"></div>
+      <div id="b-empty" class="empty" style="display:none"><div class="ei">🧪</div><div class="et">No Learning Portfolio picks yet</div><div class="es">Generate your first pick above</div></div>
     </div>
   </div>
 
@@ -1733,6 +1738,28 @@ function showGen(id){
   var os=document.getElementById('gs-open'); if(os) os.textContent=open;
   var rs=document.getElementById('gs-ret');
   if(rs){ rs.textContent=avg!==null?(parseFloat(avg)>=0?'+':'')+avg+'%':'—'; rs.style.color=avg!==null?(parseFloat(avg)>=0?'var(--g)':'var(--r)'):'var(--t2)'; }
+  // Render filtered picks for this generation
+  var grid=document.getElementById('gen-picks-grid');
+  var empty=document.getElementById('gen-picks-empty');
+  if(!grid) return;
+  if(!picks.length){ grid.innerHTML=''; if(empty) empty.style.display='block'; return; }
+  if(empty) empty.style.display='none';
+  grid.innerHTML=picks.slice().reverse().map(function(p,i){
+    var real=pB.filter(function(x){ return !x.declined&&(x.generation===curGenId||(curGenId===1&&!x.generation)); });
+    var idx2=real.length-1-i;
+    var conf=p.confidence||0;
+    return '<div class="pcard" onclick="openM('+idx2+')"><div class="ptop"><div><div class="psym">'+p.ticker+'</div><div class="pdate">'+fd(p.date)+'</div></div><div style="text-align:right">'+badg(p.action||'BUY')+'<div style="margin-top:6px" id="gpnl-'+p.ticker+'"><span style="font-size:11px;color:var(--t3)">loading…</span></div></div></div><div class="preason">'+(p.reasoning||'').substring(0,150)+'</div><div class="prisk">⚠ '+(p.key_risk||'').substring(0,100)+'</div><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-size:11px;color:var(--t3)">Entry: <span style="font-family:DM Mono,monospace;font-weight:700">'+fp(p.entry_price)+'</span></span><span style="font-size:11px;color:var(--t3)">Current: <span id="gprice-'+p.ticker+'" style="font-family:DM Mono,monospace;font-weight:700;color:var(--t)">—</span></span></div><div class="cbar"><div class="ctrack"><div class="cfill" style="width:'+conf+'%"></div></div><div class="cval">'+conf+'%</div></div></div>';
+  }).join('');
+  // Fetch live prices for gen picks
+  picks.forEach(function(p){
+    getprice(p.ticker).then(function(price){
+      if(!price) return;
+      var pe=document.getElementById('gprice-'+p.ticker);
+      var pl=document.getElementById('gpnl-'+p.ticker);
+      if(pe) pe.textContent='$'+price.toFixed(2);
+      if(pl&&p.entry_price){ var chg=((price-p.entry_price)/p.entry_price*100); pl.innerHTML=pnl(chg); }
+    }).catch(function(){});
+  });
 }
 function createNewGen(){
   var rules=mem.rules||[];
