@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782756988 -->
+<!-- v1782757397 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -821,22 +821,7 @@ document.getElementById('genbtn').addEventListener('click', function() {
         } else {
           addLog('-> Price: $'+price.toFixed(2));
         }
-        return doDeepDive(_ticker, {c:price||0,pc:0}, regStr, rulesStr, regime, pB, sessionHeld, getAllHeld, gput, published, declined, updateBar, runNext, addLog);
-      }).catch(function(e){
-        addLog('-> Price error, proceeding: '+(e.message||''));
-        return doDeepDive(_ticker, {}, regStr, rulesStr, regime, pB, sessionHeld, getAllHeld, gput, published, declined, updateBar, runNext, addLog);
-      });
-    }).catch(function(e){
-      addLog('x Error: ' + e.message.substring(0, 70));
-      declined++; updateBar(); setTimeout(runNext, 1500);
-    });
-
-
-
-});
-
-
-function doDeepDive(ticker, preloadedQuote, regStr, rulesStr, regime, pB, sessionHeld, getAllHeld, gput, published, declined, updateBar, runNext, addLog){
+        return (function(ticker, preloadedQuote){
   // Step 2: fetch live technicals via quote + metric (both free tier)
   addLog('-> Fetching live technicals for ' + ticker + '...');
   return Promise.all([
@@ -977,7 +962,160 @@ function doDeepDive(ticker, preloadedQuote, regStr, rulesStr, regime, pB, sessio
       });
     });
   });
-  }
+          })(_ticker, {c:price||0,pc:0});
+      }).catch(function(e){
+        addLog('-> Price error, proceeding: '+(e.message||''));
+        return (function(ticker, preloadedQuote){
+  // Step 2: fetch live technicals via quote + metric (both free tier)
+  addLog('-> Fetching live technicals for ' + ticker + '...');
+  return Promise.all([
+    preloadedQuote && preloadedQuote.c ? Promise.resolve(preloadedQuote) : fh('quote?symbol='+ticker),
+    fh('stock/metric?symbol='+ticker+'&metric=all')
+  ]).then(function(techRes){
+    var quote=techRes[0]||{}, metric=(techRes[1]&&techRes[1].metric)||{};
+    var price=quote.c||0, pc=quote.pc||0;
+    if(!price&&metric) price=metric['currentPrice']||metric['latestPrice']||0;
+    var hasQuote=price>0;
+    var hasMeta=metric['52WeekHigh']!==undefined;
+    addLog('-> Quote: '+(hasQuote?'$'+price.toFixed(2):'NO DATA')+' | Metric: '+(hasMeta?'OK':'NO DATA'));
+    var techCtx='';
+    if(hasQuote||hasMeta){
+      var dayChg=pc&&price?((price-pc)/pc*100).toFixed(2):'?';
+      // Free tier Finnhub — use 52W range + RSI as trend proxies
+      var w52h=metric['52WeekHigh']?parseFloat(metric['52WeekHigh']).toFixed(2):null;
+      var w52l=metric['52WeekLow']?parseFloat(metric['52WeekLow']).toFixed(2):null;
+      var beta=metric['beta']?parseFloat(metric['beta']).toFixed(2):null;
+      var vol10=metric['10DayAverageTradingVolume']||null;
+      var rsi=metric['rsi14d']?parseFloat(metric['rsi14d']).toFixed(1):null;
+      var w52hNum=w52h?parseFloat(w52h):null;
+      var w52lNum=w52l?parseFloat(w52l):null;
+      var pctFrom52h=w52h?((price-w52hNum)/w52hNum*100).toFixed(1):null;
+      var pctFrom52l=w52l?((price-w52lNum)/w52lNum*100).toFixed(1):null;
+      var rangePos=null;
+      if(w52hNum&&w52lNum&&w52hNum>w52lNum&&price>0){
+        var rawPos=((price-w52lNum)/(w52hNum-w52lNum)*100);
+        rangePos=(rawPos>=-50&&rawPos<=200)?rawPos.toFixed(0):null;
+      }
+      var trendSignal=rangePos?(parseFloat(rangePos)>=60?'UPPER RANGE — bullish momentum':parseFloat(rangePos)>=40?'MID RANGE — neutral':'LOWER RANGE — bearish pressure'):'unknown';
+      var bullStack=rangePos&&parseFloat(rangePos)>=60;
+      var rsiZone=rsi?(parseFloat(rsi)>=50&&parseFloat(rsi)<=70?'MOMENTUM ZONE 50-70':parseFloat(rsi)>70?'OVERBOUGHT >70':'WEAK <50'):'not available';
+      addLog('-> 52W Position: '+(rangePos||'?')+'% ('+trendSignal+') | RSI: '+(rsi||'?'));
+      var volStr = vol10 ? (' | 10d Avg Volume=' + (vol10 > 1 ? vol10.toFixed(1) + 'M shares' : vol10 + 'M') + ' daily') : '';
+      var rsiStr = rsi ? (' | RSI=' + rsi + ' ' + rsiZone) : '';
+      var w52hStr = w52h ? (' | 52W High=$' + w52h + ' (' + pctFrom52h + '% from high)') : '';
+      var w52lStr = w52l ? (' | 52W Low=$' + w52l) : '';
+      var betaStr = beta ? (' | Beta=' + beta) : '';
+      var bullStr = bullStack ? 'LIKELY — price in upper 52W range' : 'UNCERTAIN — price in lower 52W range';
+      var rsiStr2=rsi?' | RSI='+rsi+' '+rsiZone:'';
+      var betaStr2=beta?' | Beta='+beta:'';
+      var volStr2=vol10?' | 10d Avg Vol='+vol10.toFixed(1)+'M':'';
+      techCtx = 'LIVE TECHNICALS from Finnhub:'
+        + ' Price=$'+(price?price.toFixed(2):'?')+' (Day: '+(dayChg>=0?'+':'')+dayChg+'%)'
+        + (w52h?' | 52W High=$'+w52h+' ('+pctFrom52h+'% from high)':'')
+        + (w52l?' | 52W Low=$'+w52l+' (+'+pctFrom52l+'% above low)':'')
+        + (rangePos?' | 52W Range Position: '+rangePos+'% — '+trendSignal:'')
+        + (bullStack?' | TREND: BULLISH (upper 52W range)':' | TREND: NEUTRAL/BEARISH (lower 52W range)')
+        + rsiStr2 + betaStr2 + volStr2
+        + ' | Use web_search to verify current MA50/MA200 for '+ticker;
+    } else {
+      techCtx='No live technical data from Finnhub for '+ticker+'. Use web_search to find current price and 52W range before analyzing.';
+      addLog('-> No technical data — Sonnet will search');
+    }
+    return buildDeepDive();
+    function buildDeepDive(){
+    var sys='You are Learning Portfolio AI — combining fundamental analysis with technical momentum confirmation. '
+      +'The sheep (retail + algorithmic momentum traders) follow MAs, RSI, and breakouts — use their momentum with you. '
+      +'Confidence threshold 80%. Below 80% set declined:true. Respond ONLY in valid JSON, no markdown.';
+    var usr='Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr
+      +' '+techCtx
+      +' Deep dive on '+ticker+'. Assess: (1) fundamental thesis and catalyst, '
+      +'(2) technical confirmation — is bull stack in place? RSI in momentum zone? Volume expanding? Are the sheep moving with us? '
+      +'(3) adversarial challenge. (4) final conviction. '
+      +'IMPORTANT: If bull stack is YES and RSI is in momentum zone (50-70), this AUTOMATICALLY satisfies Rule 1 criterion (B) — do NOT decline for missing catalyst. '
+      +'Technicals AGAINST thesis (below MA50, RSI<40, MACD negative) = reduce confidence 10-15pts. '
+      +'Technicals ALIGNED (bull stack, RSI 50-70, volume>1.2x) = increase confidence 5-10pts. '
+      +'A bull stack + momentum RSI + expanding volume = STRONG BUY signal regardless of catalyst. '
+      +'Return JSON: {"ticker":"'+ticker+'","action":"BUY","entry_price":0,"target_price":0,'
+      +'"stop_loss":0,"sector":"sector","timeframe":"short-term","confidence":0,'
+      +'"declined":false,"decline_reason":null,'
+      +'"chain_of_thought":"400-600 words: fundamental thesis, catalyst check, technical analysis (MAs/RSI/MACD/volume — are the sheep aligned?), adversarial challenge, final conviction",'
+      +'"adversarial_response":"3 strongest objections",'
+      +'"reasoning":"100-150 word thesis combining fundamental and technical view",'
+      +'"key_risk":"biggest risk 1-2 sentences",'
+      +'"technical_score":"bull_stack|partial|bearish",'
+      +'"regime_context":"'+(regime?regime.label:'unknown')+'",'
+      +'"date":"'+new Date().toISOString()+'"}';
+    return ai(sys, usr, 3000);
+    } // end buildDeepDive
+  }).then(function(raw2) {
+    if (!raw2) throw new Error('Empty deep dive response');
+    var pick = pj(raw2);
+    if (pick.confidence !== undefined && pick.confidence <= 1) {
+      pick.confidence = Math.round(pick.confidence * 100);
+    }
+    // Enforce 80% gate
+    if (!pick.declined && (pick.confidence || 0) < 80) {
+      pick.declined = true;
+      pick.decline_reason = 'Confidence ' + (pick.confidence || 0) + '% below 80% threshold';
+    }
+    // Final dupe check
+    var finalHeld = getAllHeld();
+    if (!pick.declined && finalHeld.indexOf(pick.ticker) >= 0) {
+      pick.declined = true;
+      pick.decline_reason = pick.ticker + ' already in Learning Portfolio';
+    }
+    if (pick.declined) {
+      declined++;
+      addLog('x Declined: ' + (pick.decline_reason || '').substring(0, 70));
+      pick.id = Date.now().toString();
+      pB.push(pick);
+      completed++;
+      return gput(STUDY, 'portfolio_b.json', pB).then(function() {
+        renderB(); updateBar(); setTimeout(runNext, 1500);
+      });
+    }
+    // Fetch real price
+    return getprice(pick.ticker).then(function(livePrice) {
+      if (livePrice) {
+        var se = pick.entry_price || 0;
+        pick.entry_price = livePrice;
+        if (se > 0) {
+          var tgt = pick.target_price ? Math.min(Math.max((pick.target_price - se) / se, 0.03), 0.20) : 0.08;
+          var stp = pick.stop_loss ? Math.min(Math.max((se - pick.stop_loss) / se, 0.02), 0.10) : 0.05;
+          pick.target_price = parseFloat((livePrice * (1 + tgt)).toFixed(2));
+          pick.stop_loss = parseFloat((livePrice * (1 - stp)).toFixed(2));
+        } else {
+          pick.target_price = parseFloat((livePrice * 1.08).toFixed(2));
+          pick.stop_loss = parseFloat((livePrice * 0.95).toFixed(2));
+        }
+        pick.price_source = 'finnhub_live';
+        pick.price_fetched_at = new Date().toISOString();
+      }
+      pick.id = Date.now().toString();
+      pick.generation = currentGenId; // tag with current generation
+      pB.push(pick);
+      sessionHeld.push(pick.ticker); // track in session
+      // Update generation tickers list
+      var curGen = generations.generations.find(function(g){ return g.id === currentGenId; });
+      if (curGen && curGen.tickers.indexOf(pick.ticker) < 0) curGen.tickers.push(pick.ticker);
+      published++;
+      addLog('+ ' + pick.ticker + ' @ $' + (pick.entry_price ? pick.entry_price.toFixed(2) : '?') + ' — ' + pick.confidence + '% conf');
+      completed++;
+      return gput(STUDY, 'portfolio_b.json', pB).then(function() {
+        renderB(); updateBar(); setTimeout(runNext, 2000);
+      });
+    });
+  });
+          })(_ticker, {});
+      });
+    }).catch(function(e){
+      addLog('x Error: ' + e.message.substring(0, 70));
+      declined++; updateBar(); setTimeout(runNext, 1500);
+    });
+
+
+
+});
 // ── COMPARE ──────────────────────────────────────────────
 function renderCmp(){
   var amap={};
