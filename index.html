@@ -602,6 +602,9 @@ function renderA(){
 // ── PORTFOLIO B ──────────────────────────────────────────
 function loadB(){ return raw(STUDY,'portfolio_b.json').then(function(d){ pB=d||[]; renderB(); }); }
 function renderB(){
+  // Also refresh generation picks view
+  var gen = generations.generations.find(function(g){ return g.id === currentGenId; });
+  if (gen) renderGenerationPicks(gen);
   // Normalize any stored picks where confidence is decimal
   pB.forEach(function(p){ if(p.confidence!==undefined&&p.confidence<=1) p.confidence=Math.round(p.confidence*100); });
   var real=pB.filter(function(p){ return !p.declined; });
@@ -873,8 +876,12 @@ document.getElementById('genbtn').addEventListener('click', function() {
             pick.price_fetched_at = new Date().toISOString();
           }
           pick.id = Date.now().toString();
+          pick.generation = currentGenId; // tag with current generation
           pB.push(pick);
           sessionHeld.push(pick.ticker); // track in session
+          // Update generation tickers list
+          var curGen = generations.generations.find(function(g){ return g.id === currentGenId; });
+          if (curGen && curGen.tickers.indexOf(pick.ticker) < 0) curGen.tickers.push(pick.ticker);
           published++;
           addLog('+ ' + pick.ticker + ' @ $' + (pick.entry_price ? pick.entry_price.toFixed(2) : '?') + ' — ' + pick.confidence + '% conf');
           completed++;
@@ -1048,6 +1055,7 @@ function updateMem(silent){
       document.getElementById('br').textContent=(mem.rules||[]).length;
       renderRules(); renderFactors();
       if(!silent) toast('✦ '+(mem.rules||[]).length+' rules active');
+      autoCreateGenerationOnRuleUpdate((mem.rules||[]).length);
     });
   })
   .catch(function(e){ if(!silent) toast('Error: '+e.message); })
@@ -1511,9 +1519,154 @@ function autoLogExits(exitPositions) {
   });
 }
 
+
+// ── GENERATIONS ──────────────────────────────────────────
+var generations = { current_generation: 1, generations: [] };
+var currentGenId = 1;
+
+function loadGenerations() {
+  return raw(STUDY, 'generations.json').then(function(d) {
+    if (d) generations = d;
+    renderGenerationSelector();
+    switchGeneration(generations.current_generation);
+  }).catch(function() {
+    renderGenerationSelector();
+  });
+}
+
+function renderGenerationSelector() {
+  var sel = document.getElementById('gen-selector');
+  if (!sel) return;
+  sel.innerHTML = generations.generations.map(function(g) {
+    return '<option value="' + g.id + '"' + (g.id === currentGenId ? ' selected' : '') + '>'
+      + g.label + ' (' + (g.rule_count || 0) + ' rules)</option>';
+  }).join('');
+}
+
+function switchGeneration(id) {
+  currentGenId = parseInt(id);
+  var gen = generations.generations.find(function(g) { return g.id === currentGenId; });
+  if (!gen) return;
+
+  // Update badge and info
+  document.getElementById('gen-badge').textContent = 'Gen ' + gen.id;
+  document.getElementById('gen-title').textContent = gen.label;
+  document.getElementById('gen-desc').textContent = gen.description || '';
+  document.getElementById('gen-stat-rules').textContent = gen.rule_count || 0;
+
+  // Show rules snapshot if exists
+  var rulesCard = document.getElementById('gen-rules-card');
+  var rulesList = document.getElementById('gen-rules-list');
+  if (gen.rules_snapshot && gen.rules_snapshot.length) {
+    rulesCard.style.display = 'block';
+    rulesList.innerHTML = gen.rules_snapshot.map(function(r, i) {
+      return '<div style="margin-bottom:4px"><span style="color:var(--accent);font-weight:700">' + (i+1) + '.</span> ' + r + '</div>';
+    }).join('');
+  } else {
+    rulesCard.style.display = 'none';
+  }
+
+  // Filter picks for this generation
+  renderGenerationPicks(gen);
+}
+
+function renderGenerationPicks(gen) {
+  var container = document.getElementById('gen-picks-container');
+  if (!container) return;
+
+  var genPicks = pB.filter(function(p) {
+    return !p.declined && p.generation === gen.id;
+  });
+
+  // Update stats
+  var closed = genPicks.filter(function(p) { return p.status === 'closed'; });
+  var open = genPicks.filter(function(p) { return p.status !== 'closed'; });
+  var returns = closed.filter(function(p) { return p.return_pct !== undefined; });
+  var avgRet = returns.length ? (returns.reduce(function(s,p) { return s + p.return_pct; }, 0) / returns.length).toFixed(1) : null;
+
+  document.getElementById('gen-stat-picks').textContent = genPicks.length;
+  document.getElementById('gen-stat-open').textContent = open.length;
+  document.getElementById('gen-stat-closed').textContent = closed.length;
+  var retEl = document.getElementById('gen-stat-return');
+  if (avgRet !== null) {
+    retEl.textContent = (parseFloat(avgRet) >= 0 ? '+' : '') + avgRet + '%';
+    retEl.style.color = parseFloat(avgRet) >= 0 ? 'var(--g)' : 'var(--r)';
+  } else {
+    retEl.textContent = '—';
+    retEl.style.color = 'var(--text2)';
+  }
+
+  if (!genPicks.length) {
+    container.innerHTML = '<div class="ibox" style="text-align:center;color:var(--text3);padding:40px">No picks in this generation yet. Click Generate to add picks under the current rules.</div>';
+    return;
+  }
+
+  // Render pick cards
+  container.innerHTML = genPicks.map(function(p) {
+    var isClosed = p.status === 'closed';
+    var ret = p.return_pct !== undefined ? p.return_pct : null;
+    var retColor = ret !== null ? (ret >= 0 ? 'var(--g)' : 'var(--r)') : 'var(--text3)';
+    return '<div class="card" style="margin-bottom:12px;opacity:' + (isClosed ? '0.7' : '1') + '">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + '<div style="font-family:DM Mono,monospace;font-size:18px;font-weight:800">' + p.ticker + '</div>'
+      + '<div style="font-size:11px;padding:2px 8px;border-radius:12px;background:' + (isClosed ? 'var(--border)' : 'rgba(99,102,241,0.1)') + ';color:' + (isClosed ? 'var(--text3)' : 'var(--accent)') + '">' + (isClosed ? 'CLOSED' : 'OPEN') + '</div>'
+      + '<div style="font-size:11px;color:var(--text3)">' + (p.sector || '') + '</div>'
+      + '</div>'
+      + '<div style="text-align:right">'
+      + (ret !== null ? '<div style="font-size:16px;font-weight:800;color:' + retColor + '">' + (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%</div>' : '<div style="font-size:13px;font-weight:700;color:var(--accent)">' + (p.confidence || '') + '% conf</div>')
+      + '</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px">'
+      + '<div><span style="color:var(--text3)">Entry</span><br><strong>$' + (p.entry_price ? p.entry_price.toFixed(2) : '—') + '</strong></div>'
+      + '<div><span style="color:var(--text3)">Target</span><br><strong style="color:var(--g)">$' + (p.target_price ? p.target_price.toFixed(2) : '—') + '</strong></div>'
+      + '<div><span style="color:var(--text3)">Stop</span><br><strong style="color:var(--r)">$' + (p.stop_loss ? p.stop_loss.toFixed(2) : '—') + '</strong></div>'
+      + '</div>'
+      + (p.reasoning ? '<div style="font-size:12px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' + p.reasoning.substring(0,150) + '…</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function createNewGeneration() {
+  // Snapshot current rules
+  var rules = mem.rules || [];
+  var newId = (generations.current_generation || 1) + 1;
+  var newGen = {
+    id: newId,
+    label: 'Generation ' + newId,
+    created_at: new Date().toISOString(),
+    description: 'Rules v' + newId + '.0 — ' + rules.length + ' learned rules applied',
+    rule_version: 'v' + newId + '.0',
+    rule_count: rules.length,
+    rules_snapshot: rules.slice(),
+    tickers: [],
+    stats: { total_picks: 0, open: 0, closed: 0, avg_return: 0, win_rate: 0 }
+  };
+  generations.generations.push(newGen);
+  generations.current_generation = newId;
+  return gput(STUDY, 'generations.json', generations).then(function() {
+    renderGenerationSelector();
+    switchGeneration(newId);
+    toast('✦ Generation ' + newId + ' created with ' + rules.length + ' rules — ready to generate picks');
+  });
+}
+
+function autoCreateGenerationOnRuleUpdate(newRuleCount) {
+  var currentGen = generations.generations.find(function(g) { return g.id === generations.current_generation; });
+  if (!currentGen) return Promise.resolve();
+  // Only create new generation if rules have grown meaningfully (2+ new rules)
+  var prevCount = currentGen.rule_count || 0;
+  if (newRuleCount - prevCount >= 2) {
+    toast('✦ ' + newRuleCount + ' rules active — creating new generation…');
+    return createNewGeneration();
+  }
+  return Promise.resolve();
+}
+
 // ── INIT ─────────────────────────────────────────────────
 function initApp(){
   tick(); setInterval(tick,30000);
+  loadGenerations();
   Promise.all([loadA(),loadB(),loadCritic(),loadLearn()]);
 }
 </script>
