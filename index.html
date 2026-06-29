@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782772005 -->
+<!-- v1782772216 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -1700,9 +1700,10 @@ var curGenId = 1;
 function loadGens(){
   raw(STUDY,'generations.json').then(function(d){
     if(d) gens=d;
+    curGenId = gens.current_generation || 1;
     buildGenSelector();
-    showGen(gens.current_generation||1);
-  }).catch(function(){ buildGenSelector(); });
+    showGen(curGenId);
+  }).catch(function(){ buildGenSelector(); showGen(1); });
 }
 function buildGenSelector(){
   var sel=document.getElementById('gen-selector');
@@ -1712,8 +1713,9 @@ function buildGenSelector(){
     return;
   }
   sel.innerHTML=gens.generations.map(function(g){
-    return '<option value="'+g.id+'"'+(g.id===curGenId?' selected':'')+'>'+g.label+' ('+( g.rule_count||0)+' rules)</option>';
+    return '<option value="'+g.id+'"'+(g.id===curGenId?' selected':'')+'>'+g.label+' ('+( g.rule_count||0)+' rules, '+(g.tickers||[]).length+' picks)</option>';
   }).join('');
+  sel.value = curGenId; // force selector to show current gen
 }
 function switchGen(id){
   curGenId=parseInt(id);
