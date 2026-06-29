@@ -19,26 +19,29 @@ module.exports = async function handler(req, res) {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
-    // Inject web search tool on every request
-    // Sonnet can now search for current earnings dates, news, catalysts before picking
-    const enriched = Object.assign({}, body, {
-      tools: [
-        {
-          type: 'web_search_20250305',
-          name: 'web_search'
-        }
-      ]
-    });
+    // Only inject web search when explicitly requested via use_search flag
+    // Pick generation calls don't need web search — it slows them down and causes timeouts
+    // Nomination calls set use_search:true to check current ticker news
+    const useSearch = body.use_search === true;
+    const { use_search, ...cleanBody } = body;
+
+    const requestBody = useSearch
+      ? Object.assign({}, cleanBody, {
+          tools: [{ type: 'web_search_20250305', name: 'web_search' }]
+        })
+      : cleanBody;
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01'
+    };
+    if (useSearch) headers['anthropic-beta'] = 'web-search-2025-03-05';
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'web-search-2025-03-05'
-      },
-      body: JSON.stringify(enriched)
+      headers,
+      body: JSON.stringify(requestBody)
     });
     const data = await response.json();
     return res.status(response.status).json(data);
