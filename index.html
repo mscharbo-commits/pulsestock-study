@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782772216 -->
+<!-- v1782772381 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -1719,7 +1719,11 @@ function buildGenSelector(){
 }
 function switchGen(id){
   curGenId=parseInt(id);
-  showGen(curGenId);
+  // Reload pB fresh so generation tags are current
+  raw(STUDY,'portfolio_b.json').then(function(d){
+    if(d) pB=d;
+    showGen(curGenId);
+  }).catch(function(){ showGen(curGenId); });
 }
 function showGen(id){
   curGenId=id;
@@ -1733,7 +1737,7 @@ function showGen(id){
   if(desc) desc.textContent=gen?gen.description:'';
   if(rules) rules.textContent=gen?(gen.rule_count||0):0;
   // Filter picks for this generation
-  var picks=pB.filter(function(p){ return !p.declined&&(p.generation===id||(id===1&&!p.generation)); });
+  var picks=pB.filter(function(p){ return !p.declined&&(p.generation===id||(id===1&&(p.generation===1||!p.generation))); });
   var open=picks.filter(function(p){ return p.status!=='closed'; }).length;
   var rets=picks.filter(function(p){ return p.return_pct!==undefined; });
   var avg=rets.length?(rets.reduce(function(s,p){ return s+p.return_pct; },0)/rets.length).toFixed(1):null;
