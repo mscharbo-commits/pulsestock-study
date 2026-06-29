@@ -779,8 +779,9 @@ document.getElementById('genbtn').addEventListener('click', function() {
       ]).then(function(techRes){
         var quote=techRes[0]||{}, metric=(techRes[1]&&techRes[1].metric)||{};
         var price=quote.c||0, pc=quote.pc||0;
-        var hasQuote = price > 0;
-        var hasMeta = metric['52WeekHigh'] !== undefined;
+        if(!price&&metric) price=metric['currentPrice']||metric['latestPrice']||0;
+        var hasQuote=price>0;
+        var hasMeta=metric['52WeekHigh']!==undefined;
         addLog('-> Quote: '+(hasQuote?'$'+price.toFixed(2):'NO DATA')+' | Metric: '+(hasMeta?'OK':'NO DATA'));
         var techCtx='';
         if(hasQuote||hasMeta){
@@ -795,7 +796,11 @@ document.getElementById('genbtn').addEventListener('click', function() {
           var w52lNum=w52l?parseFloat(w52l):null;
           var pctFrom52h=w52h?((price-w52hNum)/w52hNum*100).toFixed(1):null;
           var pctFrom52l=w52l?((price-w52lNum)/w52lNum*100).toFixed(1):null;
-          var rangePos=w52hNum&&w52lNum?((price-w52lNum)/(w52hNum-w52lNum)*100).toFixed(0):null;
+          var rangePos=null;
+          if(w52hNum&&w52lNum&&w52hNum>w52lNum&&price>0){
+            var rawPos=((price-w52lNum)/(w52hNum-w52lNum)*100);
+            rangePos=(rawPos>=-50&&rawPos<=200)?rawPos.toFixed(0):null;
+          }
           var trendSignal=rangePos?(parseFloat(rangePos)>=60?'UPPER RANGE — bullish momentum':parseFloat(rangePos)>=40?'MID RANGE — neutral':'LOWER RANGE — bearish pressure'):'unknown';
           var bullStack=rangePos&&parseFloat(rangePos)>=60;
           var rsiZone=rsi?(parseFloat(rsi)>=50&&parseFloat(rsi)<=70?'MOMENTUM ZONE 50-70':parseFloat(rsi)>70?'OVERBOUGHT >70':'WEAK <50'):'not available';
@@ -818,8 +823,8 @@ document.getElementById('genbtn').addEventListener('click', function() {
             + rsiStr2 + betaStr2 + volStr2
             + ' | Use web_search to verify current MA50/MA200 for '+ticker;
         } else {
-          techCtx='No technical data available. Do NOT estimate. Base confidence on fundamentals and regime only.';
-          addLog('-> No technical data — Sonnet will use fundamentals only');
+          techCtx='No live technical data from Finnhub for '+ticker+'. Use web_search to find current price and 52W range before analyzing.';
+          addLog('-> No technical data — Sonnet will search');
         }
         return buildDeepDive();
         function buildDeepDive(){
