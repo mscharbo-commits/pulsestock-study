@@ -1518,4 +1518,72 @@ function initApp(){
 }
 </script>
 </body>
-</html>
+</html>      <!-- PANEL B -->
+      <div id="panel-b" class="tab-panel" style="display:none">
+
+        <!-- Generation Header Bar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <h2 style="font-size:18px;font-weight:700;margin:0">Learning Portfolio</h2>
+            <span id="gen-badge" style="background:var(--accent);color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px">Gen 1</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="gen-selector" onchange="switchGeneration(this.value)" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 12px;font-size:13px;background:var(--card);color:var(--text);cursor:pointer">
+            </select>
+            <button onclick="createNewGeneration()" style="padding:7px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">+ New Generation</button>
+          </div>
+        </div>
+
+        <!-- Generation Info Card -->
+        <div id="gen-info-card" class="ibox" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div>
+            <div id="gen-title" style="font-weight:700;font-size:14px">Generation 1</div>
+            <div id="gen-desc" style="font-size:12px;color:var(--text3);margin-top:2px">Initial picks — no learned rules applied</div>
+          </div>
+          <div style="display:flex;gap:20px;text-align:center">
+            <div><div id="gen-stat-picks" style="font-size:18px;font-weight:800;color:var(--accent)">0</div><div style="font-size:10px;color:var(--text3)">PICKS</div></div>
+            <div><div id="gen-stat-open" style="font-size:18px;font-weight:800;color:var(--g)">0</div><div style="font-size:10px;color:var(--text3)">OPEN</div></div>
+            <div><div id="gen-stat-closed" style="font-size:18px;font-weight:800;color:var(--text2)">0</div><div style="font-size:10px;color:var(--text3)">CLOSED</div></div>
+            <div><div id="gen-stat-return" style="font-size:18px;font-weight:800">—</div><div style="font-size:10px;color:var(--text3)">AVG RETURN</div></div>
+            <div><div id="gen-stat-rules" style="font-size:18px;font-weight:800;color:var(--accent)">0</div><div style="font-size:10px;color:var(--text3)">RULES</div></div>
+          </div>
+        </div>
+
+        <!-- Rules Snapshot for this generation -->
+        <div id="gen-rules-card" style="display:none;margin-bottom:16px">
+          <div class="ibox">
+            <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">RULES APPLIED TO THIS GENERATION</div>
+            <div id="gen-rules-list" style="font-size:12px;color:var(--text3);line-height:1.8"></div>
+          </div>
+        </div>
+
+        <!-- Pick Generator -->
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="font-size:14px;font-weight:700">Generate Picks — Learning AI</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <select id="pick-count" style="border:1.5px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px;background:var(--card);color:var(--text)">
+                <option value="1">1 Pick</option>
+                <option value="3">3 Picks</option>
+                <option value="5" selected>5 Picks</option>
+                <option value="10">10 Picks</option>
+              </select>
+              <button id="genbtn" onclick="genPicks()" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Generate</button>
+            </div>
+          </div>
+          <div id="gen-progress" style="display:none">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:6px">
+              <span id="gen-status">Starting…</span>
+              <span id="gen-count">0/0</span>
+            </div>
+            <div style="background:var(--border);border-radius:4px;height:4px;margin-bottom:10px">
+              <div id="gen-bar" style="background:var(--accent);height:4px;border-radius:4px;width:0%;transition:width 0.3s"></div>
+            </div>
+            <div id="gen-log" style="font-size:11px;color:var(--text3);font-family:DM Mono,monospace;max-height:120px;overflow-y:auto"></div>
+          </div>
+        </div>
+
+        <!-- Picks for current generation -->
+        <div id="gen-picks-container"></div>
+
+
