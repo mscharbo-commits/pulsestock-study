@@ -773,7 +773,16 @@ document.getElementById('genbtn').addEventListener('click', function() {
         else throw new Error('Nomination parse failed');
       }
       var ticker = (nom.ticker || '').toUpperCase().replace(/[^A-Z]/g, '');
-      if (!ticker || ticker.length < 1 || ticker.length > 5) throw new Error('Invalid ticker: ' + ticker);
+      if (!ticker || ticker.length < 1 || ticker.length > 5) {
+        addLog('x Invalid ticker returned: ' + (ticker||'empty') + ' — skipping');
+        declined++; updateBar(); setTimeout(runNext, 500); return;
+      }
+      // Validate in universe — blocks garbage like FIX, BUY, N/A
+      var univ2 = window._universe || [];
+      if (univ2.length > 0 && univ2.indexOf(ticker) < 0) {
+        addLog('x ' + ticker + ' not in S&P500/Russell2000 — skipping');
+        declined++; updateBar(); setTimeout(runNext, 500); return;
+      }
 
       // Hard dupe check — check both pB and sessionHeld
       var currentHeld = getAllHeld();
