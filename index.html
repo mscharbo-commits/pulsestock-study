@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782773660 -->
+<!-- v1782773675 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -899,6 +899,13 @@ document.getElementById('genbtn').addEventListener('click', function() {
           pick.id = Date.now().toString();
           pB.push(pick);
           completed++;
+          var gd3 = window._genDeclined = window._genDeclined || [];
+          if (pick.ticker && gd3.indexOf(pick.ticker) < 0) {
+            gd3.push(pick.ticker);
+            var dm3 = window._declinedMap = window._declinedMap || {};
+            dm3[String(curGenId)] = gd3;
+            gput(STUDY, 'declined_tickers.json', dm3);
+          }
           return gput(STUDY, 'portfolio_b.json', pB).then(function() {
             renderB(); updateBar(); setTimeout(runNext, 1500);
           });
