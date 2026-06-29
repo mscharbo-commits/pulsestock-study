@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782770388 -->
+<!-- v1782770403 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -769,10 +769,14 @@ document.getElementById('genbtn').addEventListener('click', function() {
 
       // Step 2: fetch live technicals via quote + metric (both free tier)
       addLog('-> Fetching live technicals for ' + ticker + '...');
-      return Promise.all([
-        fh('quote?symbol='+ticker),
-        fh('stock/metric?symbol='+ticker+'&metric=all')
-      ]).then(function(techRes){
+      // Stagger calls to avoid Finnhub rate limiting
+      return fh('quote?symbol='+ticker).then(function(q){
+        return new Promise(function(res){ setTimeout(res, 600); }).then(function(){
+          return fh('stock/metric?symbol='+ticker+'&metric=all').then(function(m){
+            return [q, m];
+          });
+        });
+      }).then(function(techRes){
         var quote=techRes[0]||{}, metric=(techRes[1]&&techRes[1].metric)||{};
         var price=quote.c||0, pc=quote.pc||0;
         var hasQuote = price > 0;
