@@ -698,10 +698,10 @@ document.getElementById('genbtn').addEventListener('click', function() {
     logEl.innerHTML = msg + '<br>' + logEl.innerHTML;
   }
   function updateBar() {
-    barEl.style.width = (total > 0 ? (completed / total * 100) : 0) + '%';
-    countEl.textContent = completed + '/' + total;
-    statusEl.textContent = completed < total
-      ? 'Generating pick ' + (completed + 1) + ' of ' + total + '...'
+    barEl.style.width = (total > 0 ? (published / total * 100) : 0) + '%';
+    countEl.textContent = published + '/' + total;
+    statusEl.textContent = published < total
+      ? 'Published ' + published + ' of ' + total + ' — attempt ' + (attempts||0) + ' (declined: ' + declined + ')...'
       : 'Done — ' + published + ' published, ' + declined + ' declined';
   }
   function getAllHeld() {
@@ -722,13 +722,24 @@ document.getElementById('genbtn').addEventListener('click', function() {
     runNext();
   }).catch(function(){ window._universe=[]; runNext(); });
 
+  var maxAttempts = total * 5; // try up to 5x per requested pick
+  var attempts = 0;
   function runNext() {
-    if (completed >= total) {
+    if (published >= total) {
       btn.disabled = false;
       btn.classList.remove('loading');
+      statusEl.textContent = 'Done — ' + published + ' published, ' + declined + ' declined';
+      toast('Batch done: ' + published + ' published after ' + attempts + ' attempts');
+      return;
+    }
+    if (attempts >= maxAttempts) {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+      statusEl.textContent = 'Done — ' + published + ' published, ' + declined + ' declined (' + attempts + ' attempts)';
       toast('Batch done: ' + published + ' published, ' + declined + ' declined');
       return;
     }
+    attempts++;
     updateBar();
 
     var held = getAllHeld();
