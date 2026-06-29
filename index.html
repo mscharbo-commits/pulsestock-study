@@ -797,21 +797,29 @@ document.getElementById('genbtn').addEventListener('click', function() {
 
       addLog('-> ' + ticker + ': ' + (nom.reason || '').substring(0, 70));
 
-      // Step 1.5: quick price check
-      var _ticker = ticker; // capture in closure
-      return fh('quote?symbol='+_ticker).then(function(qck){
-        var qPrice = qck && qck.c ? qck.c : 0;
-        if(!qPrice){
-          declined++;
-          addLog('x '+_ticker+' — no price data, skipping');
-          updateBar(); setTimeout(runNext, 500);
-          return;
+      // Step 1.5: skip Finnhub price check — use getprice() which has caching
+      // and go straight to deep dive. Sonnet will web_search for price if needed.
+      var _ticker = ticker;
+      addLog('-> Getting price for '+_ticker+'...');
+      getprice(_ticker).then(function(livePrice){
+        if(!livePrice || livePrice <= 0){
+          // Try direct fh quote as backup
+          return fh('quote?symbol='+_ticker).then(function(q){
+            return q && q.c ? q.c : 0;
+          });
         }
-        addLog('-> Price confirmed: $'+qPrice.toFixed(2)+' — proceeding to deep dive');
-        return doDeepDive(_ticker, qck);
+        return livePrice;
+      }).then(function(price){
+        if(!price || price <= 0){
+          addLog('-> '+_ticker+': no price from Finnhub — Sonnet will search for current price');
+        } else {
+          addLog('-> Price: $'+price.toFixed(2)+' — proceeding to deep dive');
+        }
+        // Always proceed to deep dive — let Sonnet handle missing price via web search
+        return doDeepDive(_ticker, {c: price, pc: 0});
       }).catch(function(e){
-        addLog('x Quote fetch error for '+_ticker+': '+(e.message||'unknown'));
-        declined++; updateBar(); setTimeout(runNext, 500);
+        addLog('-> Price fetch error: '+(e.message||'unknown')+' — proceeding anyway');
+        return doDeepDive(_ticker, {});
       });
     }).catch(function(e){
       addLog('x Error: ' + e.message.substring(0, 70));
