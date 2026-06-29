@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1782771131 -->
+<!-- v1782771156 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -233,7 +233,10 @@ tbody td{padding:9px 12px;}
       <div class="sc"><div class="sn nam" id="b-dec">0</div><div class="sl">Declined</div></div>
     </div>
     <div class="content">
-      
+      <!-- Generation Selector -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;font-weight:700">Generation:</span><select id="gen-selector" onchange="switchGen(this.value)" style="border:1.5px solid var(--b);border-radius:7px;padding:5px 10px;font-size:13px;background:#fff;color:var(--t)"></select><span id="gen-badge" style="background:var(--p);color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px">Gen 1</span></div><button onclick="createNewGen()" style="padding:6px 14px;background:var(--p);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer">+ New Generation</button></div>
+      <div id="gen-info" class="ibox" style="margin-bottom:14px;display:flex;gap:20px;flex-wrap:wrap;align-items:center"><div><span id="gen-title" style="font-weight:700">Generation 1</span> <span id="gen-desc" style="font-size:11px;color:var(--t3)">Initial picks</span></div><div style="display:flex;gap:16px;margin-left:auto"><div style="text-align:center"><div id="gs-picks" style="font-size:16px;font-weight:800;color:var(--p)">0</div><div style="font-size:10px;color:var(--t3)">PICKS</div></div><div style="text-align:center"><div id="gs-open" style="font-size:16px;font-weight:800;color:var(--g)">0</div><div style="font-size:10px;color:var(--t3)">OPEN</div></div><div style="text-align:center"><div id="gs-ret" style="font-size:16px;font-weight:800">—</div><div style="font-size:10px;color:var(--t3)">AVG RET</div></div><div style="text-align:center"><div id="gs-rules" style="font-size:16px;font-weight:800;color:var(--a)">0</div><div style="font-size:10px;color:var(--t3)">RULES</div></div></div></div>
+
       <div class="card">
         <div class="ch">
           <div class="ct">Generate Picks — Learning AI · 80% Gate</div>
