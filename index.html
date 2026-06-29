@@ -825,9 +825,9 @@ document.getElementById('genbtn').addEventListener('click', function() {
       addLog('x Error: ' + e.message.substring(0, 70));
       declined++; updateBar(); setTimeout(runNext, 1500);
     });
-  }
 
-  function doDeepDive(ticker, preloadedQuote){
+
+    function doDeepDive(ticker, preloadedQuote){
       // Step 2: fetch live technicals via quote + metric (both free tier)
       addLog('-> Fetching live technicals for ' + ticker + '...');
       return Promise.all([
@@ -980,6 +980,8 @@ function renderCmp(){
   var real=pB.filter(function(p){ return !p.declined; });
   var divs=real.filter(function(p){ var a=amap[p.ticker]; return a&&a.action&&p.action&&a.action!==p.action; });
   document.getElementById('divs').innerHTML=divs.length?'<div class="slabel" style="margin-top:0">⚡ Divergences</div>'+divs.map(function(p){ var a=amap[p.ticker]; return '<div class="divrow">⚡ <strong>'+p.ticker+'</strong> — A: '+badg(a.action)+' · B: '+badg(p.action)+' ('+p.confidence+'% conf)</div>'; }).join(''):'';
+  }
+
   function tbl(rows,hs){ if(!rows.length) return '<div class="empty"><div class="ei">📋</div><div class="et">No picks</div></div>'; return '<div class="tw"><table><thead><tr>'+hs.map(function(h){ return '<th>'+h+'</th>'; }).join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'; }
   document.getElementById('cmp-a').innerHTML=tbl(pA.slice(-25).reverse().map(function(p){ var ret=parseFloat(p.return_pct); return '<tr><td class="tsym">'+p.ticker+'</td><td>'+badg(p.action)+'</td><td>'+(!isNaN(ret)?pnl(ret):'—')+'</td></tr>'; }),['Ticker','Action','Return']);
   document.getElementById('cmp-b').innerHTML=tbl(real.slice().reverse().map(function(p){ return '<tr><td class="tsym">'+p.ticker+'</td><td>'+badg(p.action||'?')+'</td><td style="color:var(--p);font-family:DM Mono,monospace">'+(p.confidence||0)+'%</td><td>'+(p.return_pct!==undefined?pnl(p.return_pct):'—')+'</td></tr>'; }),['Ticker','Action','Conf','Return']);
