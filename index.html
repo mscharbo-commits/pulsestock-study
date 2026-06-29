@@ -711,15 +711,16 @@ document.getElementById('genbtn').addEventListener('click', function() {
   }
 
   // Step 0: Load pB fresh from GitHub, then start
-  statusEl.textContent = 'Loading current portfolio...';
-  raw(STUDY, 'portfolio_b.json').then(function(fresh) {
-    if (fresh) pB = fresh;
-    addLog('Loaded — ' + getAllHeld().length + ' tickers held');
+  statusEl.textContent = 'Loading portfolio and universe...';
+  Promise.all([raw(STUDY,'portfolio_b.json'),raw(STUDY,'ticker_universe.json')]).then(function(res){
+    if(res[0]) pB=res[0];
+    window._universe=res[1]&&res[1].all?res[1].all:[];
+    addLog('Loaded — '+getAllHeld().length + ' tickers held');
     runNext();
   }).catch(function() {
-    addLog('Loaded from memory — ' + getAllHeld().length + ' tickers held');
+    addLog('Loaded from memory');
     runNext();
-  });
+  }).catch(function(){ window._universe=[]; runNext(); });
 
   function runNext() {
     if (completed >= total) {
@@ -742,8 +743,13 @@ document.getElementById('genbtn').addEventListener('click', function() {
       : '';
 
     // Step 1: cheap nomination
+    // Universe constraint — shuffle available tickers, send 80 to Sonnet
+    var univ = window._universe||[];
+    var held2 = getAllHeld();
+    var avail = univ.filter(function(t){ return held2.indexOf(t)<0; }).sort(function(){ return Math.random()-0.5; }).slice(0,80);
+    var univStr = avail.length ? 'Pick ONLY from this S&P500/Russell2000 list: '+avail.join(',')+'. No other tickers allowed.' : '';
     var nomSys = 'You are a stock picking AI. Respond ONLY with a raw JSON object, no markdown.';
-    var nomUsr = 'Today: ' + new Date().toDateString() + '. ' + heldStr + ' ' + regStr
+    var nomUsr = 'Today: ' + new Date().toDateString() + '. ' + heldStr + ' ' + univStr + ' ' + regStr
       + ' Nominate ONE stock NOT on the blacklist with high conviction today.'
       + ' Return ONLY: {"ticker":"SYMBOL","reason":"one sentence"}';
 
