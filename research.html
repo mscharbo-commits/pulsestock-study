@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782803411 -->
+<!-- v1782803437 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1056,20 +1056,34 @@ async function generatePicks(strat) {
     var held = s.picks.map(function(p){ return p.ticker; });
 
     // Available from universe minus held and declined
-    var available = universe.filter(function(t){
+    // Catalyst Swing uses the earnings-calendar-filtered candidate list instead of random universe sample
+    var sourceList = (strat === 'catalyst' && catalystCandidates) ? catalystCandidates : universe;
+    var available = sourceList.filter(function(t){
       return held.indexOf(t)<0 && s.declined.indexOf(t)<0;
     });
+
+    if (strat === 'catalyst' && available.length === 0) {
+      addLog('x No earnings-driven candidates remain (all held/declined or none exist in window) — stopping batch');
+      attempts = maxAttempts; // force batch end, this is a legitimate "nothing to trade" outcome
+      setTimeout(runNext, 100);
+      return;
+    }
+
     var sample = available.sort(function(){ return Math.random()-.5; }).slice(0,80);
 
     // Get current regime and rules
     var regStr = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
     var rulesStr = s.rules.length ? 'RULES (apply all): '+s.rules.slice(0,8).join(' | ') : 'No learned rules yet.';
     var heldStr = held.length ? 'BLACKLIST (already held — do NOT pick): '+held.join(',') : '';
-    var univStr = sample.length ? 'Pick from this list only: '+sample.join(',') : '';
+    var catalystDateStr = '';
+    if (strat === 'catalyst' && sample.length) {
+      catalystDateStr = ' EARNINGS DATES for these candidates: ' + sample.map(function(t){ return t+'='+(earningsMap[t]||'?'); }).join(',') + '.';
+    }
+    var univStr = sample.length ? 'Pick from this list only (these are PRE-CONFIRMED to have a catalyst in the window): '+sample.join(',') : '';
 
     // Step 1: Nomination
     var nomSys = 'You are a stock picking AI. Respond ONLY with raw JSON, no markdown.';
-    var nomUsr = 'Today: '+new Date().toDateString()+'. '+heldStr+' '+univStr+' '+regStr
+    var nomUsr = 'Today: '+new Date().toDateString()+'. '+heldStr+' '+univStr+(strat==='catalyst'?catalystDateStr:'')+' '+regStr
       +' Nominate ONE stock with highest conviction for '+strat+' strategy. JSON only: {"ticker":"SYMBOL","reason":"one sentence"}';
 
     var nomRaw = await ai(nomSys, nomUsr, 300, true).catch(function(){ return null; });
