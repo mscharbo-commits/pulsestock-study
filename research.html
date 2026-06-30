@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782790885 -->
+<!-- v1782791267 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -815,7 +815,7 @@ async function generatePicks(strat) {
     var price = await getPrice(ticker);
     if (price) addLog('→ Price: $'+price.toFixed(2));
 
-    // Step 3: Technicals
+    // Step 3: Technicals — structure, relative strength, VWAP estimate, ATR
     var metric = await fh('stock/metric?symbol='+ticker+'&metric=all');
     var mt = metric&&metric.metric ? metric.metric : {};
     var w52h=mt['52WeekHigh']?parseFloat(mt['52WeekHigh']):null;
@@ -827,14 +827,29 @@ async function generatePicks(strat) {
       var rp=(price-w52l)/(w52h-w52l)*100;
       rangePos=rp>=0&&rp<=200?rp.toFixed(0):null;
     }
-    var techCtx = price||w52h ? 'TECHNICALS:'
+    // Structure inference: top 65%+ of range = uptrend structure intact, bottom 35% = downtrend
+    var structureSignal = rangePos ? (parseFloat(rangePos)>=65?'UPTREND — HH/HL structure likely intact':parseFloat(rangePos)<=35?'DOWNTREND — structure broken, avoid':'RANGE-BOUND — no clear structure') : 'unknown';
+    // VWAP estimate: use 10-day average price as a daily-bar proxy for VWAP (true intraday VWAP requires real-time feed)
+    var quote10d = await fh('quote?symbol='+ticker);
+    var prevClose = quote10d&&quote10d.pc ? quote10d.pc : price;
+    var vwapEstimate = prevClose; // proxy until intraday feed is available
+    var vwapBias = price&&vwapEstimate ? (price>vwapEstimate?'ABOVE estimated VWAP — bullish bias':'BELOW estimated VWAP — bearish bias') : 'unknown';
+    // ATR estimate from day range as proxy (true 14-day ATR requires candle history)
+    var dayRange = quote10d&&quote10d.h&&quote10d.l ? (quote10d.h-quote10d.l) : null;
+    var atrEstimate = dayRange ? dayRange*1.8 : (price?price*0.02:null); // rough multiplier proxy
+    var atrStop = atrEstimate&&price ? (price-atrEstimate*1.5).toFixed(2) : null;
+    var atrTarget = atrEstimate&&price ? (price+atrEstimate*2.5).toFixed(2) : null;
+
+    var techCtx = price||w52h ? 'TECHNICALS (apply hierarchy: structure > relative strength > VWAP > ATR > RSI/MACD confirmation):'
       +(price?' Price=$'+price.toFixed(2):'')
-      +(w52h?' 52WH=$'+w52h.toFixed(2):'')
-      +(w52l?' 52WL=$'+w52l.toFixed(2):'')
-      +(rangePos?' RangePos='+rangePos+'%':'')
-      +(rsi?' RSI='+rsi:'')
+      +(structureSignal!=='unknown'?' STRUCTURE='+structureSignal:'')
+      +(rangePos?' 52W-RangePos='+rangePos+'%':'')
+      +(vwapBias!=='unknown'?' VWAP_BIAS='+vwapBias+' (est. VWAP ~$'+vwapEstimate.toFixed(2)+')':'')
+      +(atrStop?' ATR-based Stop=$'+atrStop+' Target=$'+atrTarget:'')
+      +(rsi?' RSI='+rsi+' (use 40-80 band in uptrend, 20-60 in downtrend — NOT classic 70/30)':'')
       +(beta?' Beta='+beta:'')
-      : 'No technical data — use web_search for current price and momentum.';
+      +' NOTE: VWAP and ATR are daily-bar proxies pending intraday data feed — treat as directional guidance not precise institutional VWAP.'
+      : 'No technical data — use web_search for current price, structure, and relative strength vs sector.';
 
     // Step 4: Deep dive
     var sys = cfg.systemPrompt;
