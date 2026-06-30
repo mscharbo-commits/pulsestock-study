@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782793428 -->
+<!-- v1782793559 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -639,12 +639,34 @@ async function fh(ep) {
     return r.ok ? await r.json() : null;
   } catch(e){ return null; }
 }
+var _inflightRequests = {};
+var _lastFetchTime = 0;
+var _fetchQueue = Promise.resolve();
+
 async function getPrice(sym) {
   if (pcache[sym] && (Date.now()-pcache[sym].t)<60000) return pcache[sym].p;
-  var q = await fh('quote?symbol='+sym);
-  var p = q&&q.c ? q.c : null;
-  if (p) pcache[sym] = {p:p, t:Date.now()};
-  return p;
+  // Dedupe: if a request for this symbol is already in flight, wait for it instead of firing a new one
+  if (_inflightRequests[sym]) return _inflightRequests[sym];
+
+  var promise = (async function() {
+    // Global rate limiter: enforce minimum 250ms between ANY Finnhub calls across the whole app
+    _fetchQueue = _fetchQueue.then(async function() {
+      var now = Date.now();
+      var wait = Math.max(0, 250 - (now - _lastFetchTime));
+      if (wait > 0) await new Promise(function(res){ setTimeout(res, wait); });
+      _lastFetchTime = Date.now();
+    });
+    await _fetchQueue;
+
+    var q = await fh('quote?symbol='+sym);
+    var p = q&&q.c ? q.c : null;
+    if (p) pcache[sym] = {p:p, t:Date.now()};
+    delete _inflightRequests[sym];
+    return p;
+  })();
+
+  _inflightRequests[sym] = promise;
+  return promise;
 }
 
 // ── GATE ──
@@ -757,9 +779,7 @@ async function calculateLivePnl(strat, openPicks, realizedPnl) {
     var p = openPicks[i];
     var entry = parseFloat(p.entry_price) || 0;
     if (!entry) { console.log('[PnL] '+strat+' '+p.ticker+': no entry_price'); continue; }
-    // Small stagger to avoid Finnhub rate limit on rapid sequential calls
-    if (i > 0) await new Promise(function(res){ setTimeout(res, 300); });
-    var price = await getPrice(p.ticker);
+    var price = await getPrice(p.ticker); // global rate limiter handles spacing
     if (!price) { console.log('[PnL] '+strat+' '+p.ticker+': price fetch failed (entry was $'+entry+')'); continue; }
     pricesLoaded++;
     var retPct = (price - entry) / entry * 100;
