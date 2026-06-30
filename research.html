@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782803360 -->
+<!-- v1782803411 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1019,6 +1019,21 @@ async function generatePicks(strat) {
   s.declined = (declinedRes||[]).map(function(d){ return d.ticker; });
   var weights = await getWeights(strat);
   var weightsPromptText = formatWeightsForPrompt(weights);
+
+  // Catalyst Swing: pre-filter universe to ONLY tickers with confirmed earnings in next 10 days
+  // This replaces blind random search with an instant, accurate calendar-based screen
+  var catalystCandidates = null;
+  var earningsMap = {};
+  if (strat === 'catalyst') {
+    addLog('Fetching earnings calendar for next 10 days...');
+    earningsMap = await getEarningsCalendar();
+    var tickersWithEarnings = Object.keys(earningsMap).filter(function(t){ return universe.indexOf(t) >= 0; });
+    catalystCandidates = tickersWithEarnings;
+    addLog('Earnings calendar: '+Object.keys(earningsMap).length+' companies reporting in window, '+tickersWithEarnings.length+' overlap with our universe');
+    if (!tickersWithEarnings.length) {
+      addLog('x No earnings-driven candidates found in the next 10 days for this universe');
+    }
+  }
 
   addLog('Loaded universe: '+universe.length+' tickers | Declined this gen: '+s.declined.length+' | Scoring weights: '+weights.length+' calibrated values');
 
