@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782792203 -->
+<!-- v1782792263 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1348,14 +1348,21 @@ async function checkStops(strat, silent) {
 
   for (var i=0; i<open.length; i++) {
     var p = open[i];
-    var price = await getPrice(p.ticker);
-    if (!price) continue;
+    var quote = await fh('quote?symbol='+p.ticker);
+    if (!quote || !quote.c) continue;
+    var price = quote.c;
+    var dayLow = quote.l || price;
+    var dayHigh = quote.h || price;
     var stop = parseFloat(p.stop_loss) || 0;
     var target = parseFloat(p.target_price) || 0;
-    if (stop && price <= stop) {
-      triggered.push({pick:p, price:price, reason:'stop_hit', label:'STOP HIT'});
-    } else if (target && price >= target) {
-      triggered.push({pick:p, price:price, reason:'target_hit', label:'TARGET HIT'});
+
+    if (stop && dayLow <= stop) {
+      // Day's low already breached the stop — book the exit at the stop price,
+      // not the current price, since that's where the order would have realistically executed
+      triggered.push({pick:p, price:stop, reason:'stop_hit', label:'STOP HIT (intraday low breached)', actualLow:dayLow});
+    } else if (target && dayHigh >= target) {
+      // Day's high already reached target — book at target price
+      triggered.push({pick:p, price:target, reason:'target_hit', label:'TARGET HIT (intraday high reached)', actualHigh:dayHigh});
     }
   }
 
@@ -1371,8 +1378,9 @@ async function checkStops(strat, silent) {
     +triggered.map(function(t){
       var entry = parseFloat(t.pick.entry_price)||0;
       var ret = entry ? ((t.price-entry)/entry*100) : 0;
+      var detail = t.actualLow ? ' (low: $'+t.actualLow.toFixed(2)+', booking at stop $'+t.price.toFixed(2)+')' : (t.actualHigh ? ' (high: $'+t.actualHigh.toFixed(2)+', booking at target $'+t.price.toFixed(2)+')' : '');
       return '<div class="stop-hit-row">'
-        +'<span><strong>'+t.pick.ticker+'</strong> — '+t.label+'</span>'
+        +'<span><strong>'+t.pick.ticker+'</strong> — '+t.label+'<br><span style="font-size:11px;color:var(--text3)">'+detail+'</span></span>'
         +'<span style="font-family:DM Mono,monospace;font-weight:700;color:'+(ret>=0?'var(--g)':'var(--r)')+'">'+(ret>=0?'+':'')+ret.toFixed(2)+'%</span>'
         +'</div>';
     }).join('')
