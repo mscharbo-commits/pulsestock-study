@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782794640 -->
+<!-- v1782794890 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1297,15 +1297,47 @@ async function runCritic(strat) {
   btn.textContent = '⏳ Analyzing...';
   statusEl.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px"><span class="spin">⏳</span> Sending '+closed.length+' closed trades to Claude for analysis — this typically takes 10-20 seconds...</span>';
 
-  var sys = 'You are Critic AI for the '+strat+' strategy. Analyze closed trades to find what worked and what failed. Respond ONLY in valid JSON array, no markdown.';
-  var usr = 'Analyze these closed trades: '+JSON.stringify(closed.slice(0,15))
-    +' Return JSON array: [{"ticker":"X","outcome":"win|loss","postmortem":"2-3 sentences on what drove this outcome","lesson":"one concrete actionable rule","failure_category":"wrong_timing|wrong_thesis|good_call|overconfidence|regime_mismatch"}]';
+  // Trim trade data to essential fields only — keeps prompt lean, leaves room for response tokens
+  var trimmedTrades = closed.slice(0,15).map(function(t){
+    return {
+      ticker: t.ticker,
+      entry_price: t.entry_price,
+      exit_price: t.exit_price,
+      return_pct: t.return_pct,
+      exit_reason: t.exit_reason,
+      sector: t.sector
+    };
+  });
+
+  var sys = 'You are Critic AI for the '+strat+' strategy. Analyze closed trades to find what worked and what failed. Keep each postmortem to 1-2 short sentences max. Respond ONLY with a complete, valid JSON array, no markdown, no truncation.';
+  var usr = 'Analyze these closed trades: '+JSON.stringify(trimmedTrades)
+    +' Return a JSON array, one object per trade: [{"ticker":"X","outcome":"win|loss","postmortem":"1-2 short sentences","lesson":"one short actionable rule","failure_category":"wrong_timing|wrong_thesis|good_call|overconfidence|regime_mismatch"}]'
+    +' Keep responses concise so the full array fits within the token limit.';
 
   try {
-    var raw = await ai(sys, usr, 2000, false);
+    var raw = await ai(sys, usr, 3500, false);
     statusEl.textContent = '✓ Response received — parsing postmortems...';
 
-    var items = pj(raw);
+    var items;
+    try {
+      items = pj(raw);
+    } catch(parseErr) {
+      // Fallback: try to recover partial JSON array by closing it off at the last complete object
+      statusEl.textContent = 'Response was incomplete — attempting recovery...';
+      var lastCompleteIdx = raw.lastIndexOf('},');
+      if (lastCompleteIdx > 0) {
+        var recovered = raw.substring(0, lastCompleteIdx+1) + ']';
+        var startIdx = recovered.search(/\[/);
+        if (startIdx >= 0) {
+          items = JSON.parse(recovered.substring(startIdx));
+          statusEl.textContent = '✓ Recovered '+items.length+' postmortems from incomplete response';
+        } else {
+          throw parseErr;
+        }
+      } else {
+        throw parseErr;
+      }
+    }
     if (!Array.isArray(items)) throw new Error('Not an array');
 
     statusEl.textContent = '✓ '+items.length+' postmortems generated — saving to database...';
