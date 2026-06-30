@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782794960 -->
+<!-- v1782795180 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1317,31 +1317,35 @@ async function runCritic(strat) {
 
   var items = [];
   try {
-    for (var batchIdx=0; batchIdx<batches.length; batchIdx++) {
-      statusEl.textContent = 'Analyzing batch '+(batchIdx+1)+'/'+batches.length+' ('+batches[batchIdx].length+' trades) — full depth analysis...';
+    statusEl.textContent = 'Running '+batches.length+' analysis batches in parallel ('+allTrades.length+' trades total)...';
 
+    function analyzeBatch(batch) {
       var sys = 'You are Critic AI for the '+strat+' strategy, an expert trading postmortem analyst. For each closed trade, write a genuinely useful postmortem: what was the likely entry thesis, what actually happened to the price/fundamentals, WHY the thesis succeeded or failed, and what specific observable signal would have flagged this in advance. This depth is what teaches the AI to avoid repeating mistakes — do not compress to one-liners. Respond ONLY with a complete, valid JSON array, no markdown.';
-      var usr = 'Analyze these closed trades in depth: '+JSON.stringify(batches[batchIdx])
+      var usr = 'Analyze these closed trades in depth: '+JSON.stringify(batch)
         +' For each trade return: {"ticker":"X","outcome":"win|loss","postmortem":"4-6 sentences covering the likely entry thesis, what happened, why it succeeded/failed, and what signal would have caught it","lesson":"one specific, actionable rule that would prevent this mistake or capture this win pattern in future picks","failure_category":"wrong_timing|wrong_thesis|good_call|overconfidence|regime_mismatch|valuation_miss|sector_rotation"}'
         +' Return a JSON array with one object per trade in the same order given.';
 
-      var raw = await ai(sys, usr, 3000, false);
-
-      var batchItems;
-      try {
-        batchItems = pj(raw);
-      } catch(parseErr) {
-        var lastCompleteIdx = raw.lastIndexOf('},');
-        if (lastCompleteIdx > 0) {
-          var recovered = raw.substring(0, lastCompleteIdx+1) + ']';
-          var startIdx = recovered.search(/\[/);
-          batchItems = startIdx >= 0 ? JSON.parse(recovered.substring(startIdx)) : [];
-        } else {
-          batchItems = [];
+      return ai(sys, usr, 3000, false).then(function(raw){
+        try {
+          return pj(raw);
+        } catch(parseErr) {
+          var lastCompleteIdx = raw.lastIndexOf('},');
+          if (lastCompleteIdx > 0) {
+            var recovered = raw.substring(0, lastCompleteIdx+1) + ']';
+            var startIdx = recovered.search(/\[/);
+            return startIdx >= 0 ? JSON.parse(recovered.substring(startIdx)) : [];
+          }
+          return [];
         }
-      }
-      if (Array.isArray(batchItems)) items = items.concat(batchItems);
+      }).catch(function(){ return []; });
     }
+
+    // Fire all batches simultaneously — Claude API has no shared rate limit with Finnhub
+    var allResults = await Promise.all(batches.map(analyzeBatch));
+    allResults.forEach(function(batchItems){
+      if (Array.isArray(batchItems)) items = items.concat(batchItems);
+    });
+
     statusEl.textContent = '✓ '+items.length+' in-depth postmortems generated — parsing complete...';
     if (!items.length) throw new Error('No postmortems generated');
 
