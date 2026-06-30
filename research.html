@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782793342 -->
+<!-- v1782793428 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -756,13 +756,17 @@ async function calculateLivePnl(strat, openPicks, realizedPnl) {
   for (var i=0; i<openPicks.length; i++) {
     var p = openPicks[i];
     var entry = parseFloat(p.entry_price) || 0;
-    if (!entry) continue;
+    if (!entry) { console.log('[PnL] '+strat+' '+p.ticker+': no entry_price'); continue; }
+    // Small stagger to avoid Finnhub rate limit on rapid sequential calls
+    if (i > 0) await new Promise(function(res){ setTimeout(res, 300); });
     var price = await getPrice(p.ticker);
-    if (!price) continue;
+    if (!price) { console.log('[PnL] '+strat+' '+p.ticker+': price fetch failed (entry was $'+entry+')'); continue; }
     pricesLoaded++;
     var retPct = (price - entry) / entry * 100;
     unrealizedPnl += 1000 * (retPct / 100);
+    console.log('[PnL] '+strat+' '+p.ticker+': entry=$'+entry+' current=$'+price+' ret='+retPct.toFixed(2)+'%');
   }
+  console.log('[PnL] '+strat+' summary: '+pricesLoaded+'/'+openPicks.length+' priced, unrealized=$'+unrealizedPnl.toFixed(2)+', realized=$'+realizedPnl.toFixed(2));
 
   var totalPnl = realizedPnl + unrealizedPnl;
   var totalPositions = closedCount + pricesLoaded;
