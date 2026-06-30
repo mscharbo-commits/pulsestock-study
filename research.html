@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782803437 -->
+<!-- v1782841801 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -937,6 +937,39 @@ async function getEarningsCalendar() {
     earningsCalendarCache = {};
   }
   return earningsCalendarCache;
+}
+
+async function fastPreScreen(strat, candidates, held, declinedList, regStr) {
+  // Screens many candidates AT ONCE using cheap parallel Haiku calls instead of one Sonnet call per ticker.
+  // Splits candidates into chunks, sends each chunk in one call asking for a quick relative rank, runs chunks in parallel.
+  var pool = candidates.filter(function(t){ return held.indexOf(t)<0 && declinedList.indexOf(t)<0; });
+  if (!pool.length) return [];
+
+  var CHUNK_SIZE = 40;
+  var chunks = [];
+  for (var i=0; i<pool.length; i+=CHUNK_SIZE) chunks.push(pool.slice(i, i+CHUNK_SIZE));
+
+  var strategyHint = strat==='catalyst' ? 'a near-term dated catalyst (earnings, FDA, launch) plus fresh technical setup (VWAP/momentum, not already extended)'
+    : strat==='compounder' ? 'durable competitive moat, strong free cash flow, reasonable valuation for a multi-year hold'
+    : 'strong fundamental + technical momentum alignment with the current market regime for a 10-60 day hold';
+
+  function screenChunk(chunk) {
+    var sys = 'You are a fast stock screener. Rank tickers by conviction for this strategy. Respond ONLY with a JSON array, no markdown, no explanation per ticker -- just a ranked list.';
+    var usr = 'Strategy needs: '+strategyHint+'. Candidates: '+chunk.join(',')
+      +'. Return ONLY a JSON array of the tickers from this list worth a full deep dive, ordered best-to-worst, max 8 per chunk. Exclude anything obviously unsuitable (wrong sector fit, clearly weak setup, penny stock, illiquid). Format: ["TICK1","TICK2","TICK3"]';
+    return ai(sys, usr, 400, false).then(function(raw){
+      try {
+        var arr = pj(raw);
+        return Array.isArray(arr) ? arr.filter(function(t){ return chunk.indexOf(t)>=0; }) : [];
+      } catch(e) { return []; }
+    }).catch(function(){ return []; });
+  }
+
+  // Fire all chunks in parallel -- this is the speed win, not sequential one-by-one
+  var results = await Promise.all(chunks.map(screenChunk));
+  var shortlist = [];
+  results.forEach(function(r){ shortlist = shortlist.concat(r); });
+  return shortlist;
 }
 
 var universeCache = null;
