@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782841801 -->
+<!-- v1782841824 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1070,6 +1070,19 @@ async function generatePicks(strat) {
 
   addLog('Loaded universe: '+universe.length+' tickers | Declined this gen: '+s.declined.length+' | Scoring weights: '+weights.length+' calibrated values');
 
+  // FAST PRE-SCREEN: rank candidates in parallel BEFORE doing any expensive deep dives
+  var screenPool = (strat === 'catalyst' && catalystCandidates) ? catalystCandidates : universe;
+  var heldNow = s.picks.map(function(p){ return p.ticker; });
+  statusEl.textContent = 'Pre-screening '+screenPool.length+' candidates in parallel...';
+  var regStrForScreen = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
+  var shortlist = strat === 'catalyst'
+    ? screenPool // catalyst pool is already small (earnings-confirmed) -- skip extra screening layer
+    : await fastPreScreen(strat, screenPool.sort(function(){return Math.random()-.5;}).slice(0, 600), heldNow, s.declined, regStrForScreen);
+
+  if (!shortlist.length) shortlist = screenPool.sort(function(){return Math.random()-.5;}).slice(0,30); // fallback if screen returns nothing
+  shortlist = shortlist.filter(function(t,i,a){ return a.indexOf(t)===i; }); // dedupe
+  addLog('✓ Pre-screen complete: '+shortlist.length+' shortlisted candidates ready for deep dive (from pool of '+screenPool.length+')');
+
   async function runNext() {
     if (published>=total || attempts>=maxAttempts) {
       btn.disabled = false;
@@ -1088,21 +1101,19 @@ async function generatePicks(strat) {
     // Held tickers
     var held = s.picks.map(function(p){ return p.ticker; });
 
-    // Available from universe minus held and declined
-    // Catalyst Swing uses the earnings-calendar-filtered candidate list instead of random universe sample
-    var sourceList = (strat === 'catalyst' && catalystCandidates) ? catalystCandidates : universe;
-    var available = sourceList.filter(function(t){
+    // Use the pre-screened shortlist instead of blind random sampling -- already ranked by conviction
+    var available = shortlist.filter(function(t){
       return held.indexOf(t)<0 && s.declined.indexOf(t)<0;
     });
 
-    if (strat === 'catalyst' && available.length === 0) {
-      addLog('x No earnings-driven candidates remain (all held/declined or none exist in window) — stopping batch');
-      attempts = maxAttempts; // force batch end, this is a legitimate "nothing to trade" outcome
+    if (available.length === 0) {
+      addLog('x No shortlisted candidates remain (all held/declined) — stopping batch');
+      attempts = maxAttempts;
       setTimeout(runNext, 100);
       return;
     }
 
-    var sample = available.sort(function(){ return Math.random()-.5; }).slice(0,80);
+    var sample = available.slice(0, 30); // already ranked, take top of what remains
 
     // Get current regime and rules
     var regStr = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
