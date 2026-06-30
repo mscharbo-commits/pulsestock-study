@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782791677 -->
+<!-- v1782791692 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -365,7 +365,26 @@ nav {
         <div class="gen-log" id="momentum-log"></div>
       </div>
     </div>
-    <div class="picks-grid" id="momentum-picks"></div>
+    
+    <div class="section-toggle">
+      <button class="toggle-btn active" id="momentum-tab-picks" onclick="switchSection('momentum','picks')">Picks</button>
+      <button class="toggle-btn" id="momentum-tab-critic" onclick="switchSection('momentum','critic')">🔬 Critic</button>
+      <button class="toggle-btn" id="momentum-tab-learning" onclick="switchSection('momentum','learning')">🧠 Learning Loop</button>
+    </div>
+    <div class="section-content active" id="momentum-section-picks">
+      <div class="picks-grid" id="momentum-picks"></div>
+    </div>
+    <div class="section-content" id="momentum-section-critic">
+      <button class="run-critic-btn" style="background:var(--accent1);color:#fff" onclick="runCritic('momentum')">🔬 Run Critic on Closed Trades</button>
+      <div id="momentum-critic-list"></div>
+    </div>
+    <div class="section-content" id="momentum-section-learning">
+      <div class="stat-card" style="margin-bottom:16px;display:inline-block">
+        <div class="stat-val" style="color:var(--accent1)" id="momentum-rule-count-display">0</div>
+        <div class="stat-lbl">Active Rules</div>
+      </div>
+      <div id="momentum-rules-list"></div>
+    </div>
   </div>
 
   <!-- Quality Compounder -->
@@ -403,7 +422,26 @@ nav {
         <div class="gen-log" id="compounder-log"></div>
       </div>
     </div>
-    <div class="picks-grid" id="compounder-picks"></div>
+    
+    <div class="section-toggle">
+      <button class="toggle-btn active" id="compounder-tab-picks" onclick="switchSection('compounder','picks')">Picks</button>
+      <button class="toggle-btn" id="compounder-tab-critic" onclick="switchSection('compounder','critic')">🔬 Critic</button>
+      <button class="toggle-btn" id="compounder-tab-learning" onclick="switchSection('compounder','learning')">🧠 Learning Loop</button>
+    </div>
+    <div class="section-content active" id="compounder-section-picks">
+      <div class="picks-grid" id="compounder-picks"></div>
+    </div>
+    <div class="section-content" id="compounder-section-critic">
+      <button class="run-critic-btn" style="background:var(--accent2);color:#fff" onclick="runCritic('compounder')">🔬 Run Critic on Closed Trades</button>
+      <div id="compounder-critic-list"></div>
+    </div>
+    <div class="section-content" id="compounder-section-learning">
+      <div class="stat-card" style="margin-bottom:16px;display:inline-block">
+        <div class="stat-val" style="color:var(--accent2)" id="compounder-rule-count-display">0</div>
+        <div class="stat-lbl">Active Rules</div>
+      </div>
+      <div id="compounder-rules-list"></div>
+    </div>
   </div>
 
   <!-- Catalyst Swing -->
@@ -441,7 +479,26 @@ nav {
         <div class="gen-log" id="catalyst-log"></div>
       </div>
     </div>
-    <div class="picks-grid" id="catalyst-picks"></div>
+    
+    <div class="section-toggle">
+      <button class="toggle-btn active" id="catalyst-tab-picks" onclick="switchSection('catalyst','picks')">Picks</button>
+      <button class="toggle-btn" id="catalyst-tab-critic" onclick="switchSection('catalyst','critic')">🔬 Critic</button>
+      <button class="toggle-btn" id="catalyst-tab-learning" onclick="switchSection('catalyst','learning')">🧠 Learning Loop</button>
+    </div>
+    <div class="section-content active" id="catalyst-section-picks">
+      <div class="picks-grid" id="catalyst-picks"></div>
+    </div>
+    <div class="section-content" id="catalyst-section-critic">
+      <button class="run-critic-btn" style="background:var(--accent3);color:#fff" onclick="runCritic('catalyst')">🔬 Run Critic on Closed Trades</button>
+      <div id="catalyst-critic-list"></div>
+    </div>
+    <div class="section-content" id="catalyst-section-learning">
+      <div class="stat-card" style="margin-bottom:16px;display:inline-block">
+        <div class="stat-val" style="color:var(--accent3)" id="catalyst-rule-count-display">0</div>
+        <div class="stat-lbl">Active Rules</div>
+      </div>
+      <div id="catalyst-rules-list"></div>
+    </div>
   </div>
 
   <!-- Generation Compare -->
