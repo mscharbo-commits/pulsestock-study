@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782791844 -->
+<!-- v1782791871 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -789,6 +789,7 @@ function renderPicks(strat) {
       +'<div><span>Stop</span><strong style="color:var(--r)">$'+(p.stop_loss?(+p.stop_loss).toFixed(2):'—')+'</strong></div>'
       +'</div>'
       +'<div class="conf-bar"><div class="conf-track"><div class="conf-fill" style="width:'+conf+'%;background:'+ac+'"></div></div><div class="conf-val">'+conf+'%</div></div>'
+      +'<button class="close-btn" onclick="event.stopPropagation();manualClose(\''+strat+'\',\''+p.id+'\')">Close Position</button>'
       +'</div>';
   }).join('');
   // Fetch live prices
@@ -1276,6 +1277,121 @@ async function updateRulesFromCritiques(strat, critiqueItems) {
   } catch(e) {
     toast('Rule update error: '+e.message);
   }
+}
+
+
+// ── CLOSE POSITIONS ──
+async function closePosition(strat, pick, exitPrice, exitReason) {
+  var entry = parseFloat(pick.entry_price) || 0;
+  var retPct = entry ? ((exitPrice - entry) / entry * 100) : 0;
+
+  // Update the pick record
+  await sbPatch('study_picks', {
+    status: 'closed',
+    exit_price: exitPrice,
+    return_pct: parseFloat(retPct.toFixed(2)),
+    exit_reason: exitReason,
+    exit_date: new Date().toISOString()
+  }, '?id=eq.'+pick.id);
+
+  // Add to closed_trades for Critic analysis
+  await sbPost('closed_trades', {
+    strategy_id: strat,
+    ticker: pick.ticker,
+    entry_price: entry,
+    exit_price: exitPrice,
+    return_pct: parseFloat(retPct.toFixed(2)),
+    exit_reason: exitReason,
+    portfolio: strat,
+    sector: pick.sector || '',
+    days_held: pick.date ? Math.round((Date.now()-new Date(pick.date).getTime())/86400000) : 0,
+    gen_number: pick.gen_number
+  }).catch(function(){});
+
+  // Update in-memory state
+  var s = state[strat];
+  var idx = s.picks.findIndex(function(p){ return p.id===pick.id; });
+  if (idx>=0) { s.picks[idx].status='closed'; s.picks[idx].return_pct=retPct; }
+
+  // Reload closed trades
+  var ct = await sbGet('closed_trades', '?strategy_id=eq.'+strat+'&order=date.desc');
+  s.closedTrades = ct || [];
+
+  renderStrategyPage(strat);
+  toast('✦ '+pick.ticker+' closed at $'+exitPrice.toFixed(2)+' ('+(retPct>=0?'+':'')+retPct.toFixed(2)+'%) — '+exitReason);
+}
+
+async function manualClose(strat, pickId) {
+  var s = state[strat];
+  var pick = s.picks.find(function(p){ return p.id===pickId; });
+  if (!pick) return;
+
+  var price = await getPrice(pick.ticker);
+  if (!price) { toast('Could not fetch current price for '+pick.ticker); return; }
+
+  var confirmMsg = 'Close '+pick.ticker+' at $'+price.toFixed(2)+'? Entry was $'+(+pick.entry_price).toFixed(2);
+  if (!confirm(confirmMsg)) return;
+
+  await closePosition(strat, pick, price, 'manual_close');
+}
+
+async function checkStops(strat) {
+  var s = state[strat];
+  var open = s.picks.filter(function(p){ return p.status!=='closed'; });
+  if (!open.length) { toast('No open positions to check'); return; }
+
+  toast('Checking '+open.length+' positions...');
+  var triggered = [];
+
+  for (var i=0; i<open.length; i++) {
+    var p = open[i];
+    var price = await getPrice(p.ticker);
+    if (!price) continue;
+    var stop = parseFloat(p.stop_loss) || 0;
+    var target = parseFloat(p.target_price) || 0;
+    if (stop && price <= stop) {
+      triggered.push({pick:p, price:price, reason:'stop_hit', label:'STOP HIT'});
+    } else if (target && price >= target) {
+      triggered.push({pick:p, price:price, reason:'target_hit', label:'TARGET HIT'});
+    }
+  }
+
+  var banner = document.getElementById(strat+'-stop-banner');
+  if (!triggered.length) {
+    banner.innerHTML = '';
+    toast('No stops or targets triggered — all '+open.length+' positions within range');
+    return;
+  }
+
+  banner.innerHTML = '<div class="stop-banner">'
+    +'<div class="stop-banner-title">⚠ '+triggered.length+' Position'+(triggered.length>1?'s':'')+' Triggered</div>'
+    +triggered.map(function(t){
+      var entry = parseFloat(t.pick.entry_price)||0;
+      var ret = entry ? ((t.price-entry)/entry*100) : 0;
+      return '<div class="stop-hit-row">'
+        +'<span><strong>'+t.pick.ticker+'</strong> — '+t.label+'</span>'
+        +'<span style="font-family:DM Mono,monospace;font-weight:700;color:'+(ret>=0?'var(--g)':'var(--r)')+'">'+(ret>=0?'+':'')+ret.toFixed(2)+'%</span>'
+        +'</div>';
+    }).join('')
+    +'<button class="auto-close-all-btn" onclick="autoCloseTriggered(\''+strat+'\')">Close All & Run Learning Loop</button>'
+    +'</div>';
+
+  window['_triggered_'+strat] = triggered;
+}
+
+async function autoCloseTriggered(strat) {
+  var triggered = window['_triggered_'+strat] || [];
+  if (!triggered.length) return;
+
+  for (var i=0; i<triggered.length; i++) {
+    await closePosition(strat, triggered[i].pick, triggered[i].price, triggered[i].reason);
+  }
+
+  document.getElementById(strat+'-stop-banner').innerHTML = '';
+  toast('✦ '+triggered.length+' positions closed — running Critic...');
+
+  // Auto-run Critic on the newly closed trades
+  setTimeout(function(){ runCritic(strat); }, 1500);
 }
 
 // ── TOAST ──
