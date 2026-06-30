@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782793320 -->
+<!-- v1782793342 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -713,13 +713,13 @@ function showPage(page) {
 }
 
 // ── RENDER STRATEGY PAGE ──
-function renderStrategyPage(strat) {
-  renderStats(strat);
+async function renderStrategyPage(strat) {
   renderGenSelector(strat);
   renderPicks(strat);
+  await renderStats(strat); // await so P&L calc isn't interrupted by concurrent price fetches
 }
 
-function renderStats(strat) {
+async function renderStats(strat) {
   var s = state[strat];
   var open = s.picks.filter(function(p){ return p.status!=='closed'; });
   var closed = s.closedTrades;
@@ -744,8 +744,8 @@ function renderStats(strat) {
     return '<div class="stat-card" '+(st.id?'id="'+st.id+'"':'')+'><div class="stat-val" style="color:'+st.c+'">'+st.v+'</div><div class="stat-lbl">'+st.l+'</div></div>';
   }).join('');
 
-  // Calculate live unrealized P&L on open positions (async, updates after render)
-  calculateLivePnl(strat, open, realizedPnl);
+  // Calculate live unrealized P&L on open positions — await so it completes reliably
+  await calculateLivePnl(strat, open, realizedPnl);
 }
 
 async function calculateLivePnl(strat, openPicks, realizedPnl) {
