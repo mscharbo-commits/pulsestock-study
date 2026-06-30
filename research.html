@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782792263 -->
+<!-- v1782792413 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -728,16 +728,57 @@ function renderStats(strat) {
   var winRate = closed.length ? Math.round(wins.length/closed.length*100) : null;
   var colors = {momentum:'var(--accent1)', compounder:'var(--accent2)', catalyst:'var(--accent3)'};
   var c = colors[strat];
+
+  // Realized P&L from closed trades (sum of $ gain assuming equal $1000 per position for comparability)
+  var realizedPnl = closed.reduce(function(sum,t){ return sum + (1000 * (t.return_pct/100)); }, 0);
+
   document.getElementById(strat+'-stats').innerHTML = [
     {v:s.picks.length, l:'Total Picks', c:c},
     {v:open.length, l:'Open', c:c},
     {v:closed.length, l:'Closed', c:'var(--text)'},
     {v:winRate!==null?winRate+'%':'—', l:'Win Rate', c:winRate>=50?'var(--g)':'var(--r)'},
     {v:avgRet!==null?(parseFloat(avgRet)>=0?'+':'')+avgRet+'%':'—', l:'Avg Return', c:avgRet&&parseFloat(avgRet)>=0?'var(--g)':'var(--r)'},
-    {v:s.rules.length, l:'Learned Rules', c:c}
+    {v:s.rules.length, l:'Learned Rules', c:c},
+    {v:'<span id="'+strat+'-livepnl">calculating…</span>', l:'Total P&L (live)', c:'var(--text)', id:strat+'-pnl-card'}
   ].map(function(st){
-    return '<div class="stat-card"><div class="stat-val" style="color:'+st.c+'">'+st.v+'</div><div class="stat-lbl">'+st.l+'</div></div>';
+    return '<div class="stat-card" '+(st.id?'id="'+st.id+'"':'')+'><div class="stat-val" style="color:'+st.c+'">'+st.v+'</div><div class="stat-lbl">'+st.l+'</div></div>';
   }).join('');
+
+  // Calculate live unrealized P&L on open positions (async, updates after render)
+  calculateLivePnl(strat, open, realizedPnl);
+}
+
+async function calculateLivePnl(strat, openPicks, realizedPnl) {
+  var unrealizedPnl = 0;
+  var pricesLoaded = 0;
+
+  for (var i=0; i<openPicks.length; i++) {
+    var p = openPicks[i];
+    var entry = parseFloat(p.entry_price) || 0;
+    if (!entry) continue;
+    var price = await getPrice(p.ticker);
+    if (!price) continue;
+    pricesLoaded++;
+    var retPct = (price - entry) / entry * 100;
+    unrealizedPnl += 1000 * (retPct / 100);
+  }
+
+  var totalPnl = realizedPnl + unrealizedPnl;
+  var el = document.getElementById(strat+'-livepnl');
+  var card = document.getElementById(strat+'-pnl-card');
+  if (!el) return; // user navigated away
+
+  var sign = totalPnl >= 0 ? '+' : '';
+  el.textContent = sign + '$' + Math.abs(totalPnl).toFixed(0);
+  if (card) {
+    var valEl = card.querySelector('.stat-val');
+    if (valEl) valEl.style.color = totalPnl >= 0 ? 'var(--g)' : 'var(--r)';
+  }
+
+  // Show breakdown as title attribute (hover tooltip)
+  if (card) {
+    card.title = 'Realized: '+(realizedPnl>=0?'+':'')+'$'+realizedPnl.toFixed(0)+' | Unrealized: '+(unrealizedPnl>=0?'+':'')+'$'+unrealizedPnl.toFixed(0)+' ('+pricesLoaded+'/'+openPicks.length+' open positions priced) | Based on $1000 per position for comparability';
+  }
 }
 
 function renderGenSelector(strat) {
