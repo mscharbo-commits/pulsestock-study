@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782793559 -->
+<!-- v1782794640 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -405,7 +405,8 @@ nav {
       <div class="picks-grid" id="momentum-picks"></div>
     </div>
     <div class="section-content" id="momentum-section-critic">
-      <button class="run-critic-btn" style="background:var(--accent1);color:#fff" onclick="runCritic('momentum')">🔬 Run Critic on Closed Trades</button>
+      <button class="run-critic-btn" id="momentum-critic-btn" style="background:var(--accent1);color:#fff" onclick="runCritic('momentum')">🔬 Run Critic on Closed Trades</button>
+      <div id="momentum-critic-status" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
       <div id="momentum-critic-list"></div>
     </div>
     <div class="section-content" id="momentum-section-learning">
@@ -465,7 +466,8 @@ nav {
       <div class="picks-grid" id="compounder-picks"></div>
     </div>
     <div class="section-content" id="compounder-section-critic">
-      <button class="run-critic-btn" style="background:var(--accent2);color:#fff" onclick="runCritic('compounder')">🔬 Run Critic on Closed Trades</button>
+      <button class="run-critic-btn" id="compounder-critic-btn" style="background:var(--accent2);color:#fff" onclick="runCritic('compounder')">🔬 Run Critic on Closed Trades</button>
+      <div id="compounder-critic-status" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
       <div id="compounder-critic-list"></div>
     </div>
     <div class="section-content" id="compounder-section-learning">
@@ -525,7 +527,8 @@ nav {
       <div class="picks-grid" id="catalyst-picks"></div>
     </div>
     <div class="section-content" id="catalyst-section-critic">
-      <button class="run-critic-btn" style="background:var(--accent3);color:#fff" onclick="runCritic('catalyst')">🔬 Run Critic on Closed Trades</button>
+      <button class="run-critic-btn" id="catalyst-critic-btn" style="background:var(--accent3);color:#fff" onclick="runCritic('catalyst')">🔬 Run Critic on Closed Trades</button>
+      <div id="catalyst-critic-status" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
       <div id="catalyst-critic-list"></div>
     </div>
     <div class="section-content" id="catalyst-section-learning">
@@ -1286,7 +1289,13 @@ async function runCritic(strat) {
   var closed = s.closedTrades;
   if (!closed.length) { toast('No closed trades yet to analyze for '+strat); return; }
 
-  toast('🔬 Running Critic on '+closed.length+' closed trades...');
+  var btn = document.getElementById(strat+'-critic-btn');
+  var statusEl = document.getElementById(strat+'-critic-status');
+
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+  btn.textContent = '⏳ Analyzing...';
+  statusEl.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px"><span class="spin">⏳</span> Sending '+closed.length+' closed trades to Claude for analysis — this typically takes 10-20 seconds...</span>';
 
   var sys = 'You are Critic AI for the '+strat+' strategy. Analyze closed trades to find what worked and what failed. Respond ONLY in valid JSON array, no markdown.';
   var usr = 'Analyze these closed trades: '+JSON.stringify(closed.slice(0,15))
@@ -1294,11 +1303,16 @@ async function runCritic(strat) {
 
   try {
     var raw = await ai(sys, usr, 2000, false);
+    statusEl.textContent = '✓ Response received — parsing postmortems...';
+
     var items = pj(raw);
     if (!Array.isArray(items)) throw new Error('Not an array');
 
+    statusEl.textContent = '✓ '+items.length+' postmortems generated — saving to database...';
+
     // Save critiques to Supabase
     for (var i=0; i<items.length; i++) {
+      statusEl.textContent = 'Saving postmortem '+(i+1)+'/'+items.length+' ('+items[i].ticker+')...';
       await sbPost('critiques', {
         strategy_id: strat,
         ticker: items[i].ticker,
@@ -1313,13 +1327,21 @@ async function runCritic(strat) {
     var fresh = await sbGet('critiques', '?strategy_id=eq.'+strat+'&order=id.desc');
     s.critiques = fresh || [];
     renderCriticList(strat);
+    statusEl.textContent = '✦ '+items.length+' postmortems saved — updating Learning Loop rules...';
     toast('✦ '+items.length+' postmortems generated — updating rules...');
 
     // Now run rule update from lessons
     await updateRulesFromCritiques(strat, items);
 
+    statusEl.innerHTML = '<span style="color:var(--g)">✓ Critic run complete — '+items.length+' postmortems analyzed, '+(s.rules.length)+' rules now active</span>';
+
   } catch(e) {
+    statusEl.innerHTML = '<span style="color:var(--r)">✕ Error: '+e.message+'</span>';
     toast('Critic error: '+e.message);
+  } finally {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.textContent = '🔬 Run Critic on Closed Trades';
   }
 }
 
