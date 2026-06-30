@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782798536 -->
+<!-- v1782798566 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1404,7 +1404,11 @@ async function runCritic(strat) {
     // Now run rule update from lessons
     await updateRulesFromCritiques(strat, items);
 
-    statusEl.innerHTML = '<span style="color:var(--g)">✓ Critic run complete — '+items.length+' postmortems analyzed, '+(s.rules.length)+' rules now active</span>';
+    // Also recalibrate scoring category weights based on observed patterns
+    statusEl.textContent = 'Recalibrating scoring weights based on trade evidence...';
+    await adjustWeightsFromCritiques(strat, items);
+
+    statusEl.innerHTML = '<span style="color:var(--g)">✓ Critic run complete — '+items.length+' postmortems analyzed, '+(s.rules.length)+' rules now active, scoring weights recalibrated</span>';
 
   } catch(e) {
     statusEl.innerHTML = '<span style="color:var(--r)">✕ Error: '+e.message+'</span>';
@@ -1413,6 +1417,40 @@ async function runCritic(strat) {
     btn.disabled = false;
     btn.style.opacity = '1';
     btn.textContent = '🔬 Run Critic on Closed Trades';
+  }
+}
+
+
+async function adjustWeightsFromCritiques(strat, critiqueItems) {
+  var currentWeights = await getWeights(strat);
+  var catWeights = currentWeights.filter(function(w){ return !w.subcriterion; });
+  if (!catWeights.length) return;
+
+  var sys = 'You are a quantitative model calibrator. Given trade postmortems and the current category weights used for scoring, determine if any category weight should be adjusted based on observed patterns (e.g. if losses repeatedly trace back to a category that was under-weighted relative to its actual predictive importance, or a category that was over-weighted but did not actually predict the outcome). Be conservative -- only suggest changes when the evidence is clear across multiple trades, not from a single data point. Respond ONLY with a JSON array.';
+  var usr = 'Current category weights for '+strat+': '+JSON.stringify(catWeights.map(function(w){return {category:w.category, weight:w.weight, rationale:w.rationale};}))
+    +' Trade postmortems: '+JSON.stringify(critiqueItems.map(function(c){return {ticker:c.ticker, outcome:c.outcome, postmortem:c.postmortem, lesson:c.lesson};}))
+    +' Weights across all 4 categories should remain reasonably balanced and should sum close to 1.0 in total. '
+    +' Return a JSON array of ONLY the categories that should change: [{"category":"technical","new_weight":0.35,"rationale":"specific reason citing the trade evidence"}]. '
+    +' If no category warrants adjustment based on this batch of evidence, return [].';
+
+  try {
+    var raw = await ai(sys, usr, 800, false);
+    var adjustments = pj(raw);
+    if (!Array.isArray(adjustments) || !adjustments.length) return;
+
+    for (var i=0; i<adjustments.length; i++) {
+      var adj = adjustments[i];
+      if (!adj.category || typeof adj.new_weight !== 'number') continue;
+      await sbPatch('scoring_weights',
+        { weight: adj.new_weight, rationale: adj.rationale, updated_at: new Date().toISOString() },
+        '?strategy_id=eq.'+strat+'&category=eq.'+adj.category+'&subcriterion=is.null'
+      ).catch(function(){});
+    }
+
+    delete weightsCache[strat]; // force reload next time
+    toast('✦ Scoring weights recalibrated for '+strat+': '+adjustments.map(function(a){return a.category;}).join(', '));
+  } catch(e) {
+    console.log('Weight adjustment error: '+e.message);
   }
 }
 
