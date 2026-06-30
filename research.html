@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782798244 -->
+<!-- v1782798536 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -889,6 +889,33 @@ function renderPicks(strat) {
 }
 
 // ── PICK GENERATION ──
+var weightsCache = {};
+async function getWeights(strat) {
+  if (weightsCache[strat]) return weightsCache[strat];
+  var rows = await sbGet('scoring_weights', '?strategy_id=eq.'+strat).catch(function(){ return []; });
+  weightsCache[strat] = rows || [];
+  return weightsCache[strat];
+}
+
+function formatWeightsForPrompt(weights) {
+  var cats = weights.filter(function(w){ return !w.subcriterion; });
+  var subs = weights.filter(function(w){ return w.subcriterion; });
+  var lines = ['LEARNED CATEGORY WEIGHTS (these are the current calibrated starting weights from prior trade outcomes -- use as your default unless this specific stock clearly warrants deviation, in which case explain why):'];
+  cats.forEach(function(c){
+    lines.push('  ' + c.category + ': ' + (c.weight*100).toFixed(0) + '% -- ' + (c.rationale||''));
+  });
+  lines.push('SUB-CRITERIA WEIGHTS WITHIN EACH CATEGORY:');
+  var byCategory = {};
+  subs.forEach(function(s){
+    byCategory[s.category] = byCategory[s.category] || [];
+    byCategory[s.category].push(s.subcriterion + '=' + (s.weight*100).toFixed(0) + '%');
+  });
+  Object.keys(byCategory).forEach(function(cat){
+    lines.push('  ' + cat + ': ' + byCategory[cat].join(', '));
+  });
+  return lines.join('\n');
+}
+
 var universeCache = null;
 async function getUniverse() {
   if (universeCache) return universeCache;
@@ -963,12 +990,14 @@ async function generatePicks(strat) {
       : 'Attempt '+attempts+' — '+published+' published, '+declined+' declined';
   }
 
-  // Load universe and declined
+  // Load universe, declined, and learned scoring weights
   var universe = await getUniverse();
   var declinedRes = await sbGet('declined_tickers', '?strategy_id=eq.'+strat+'&gen_number=eq.'+s.currentGen);
   s.declined = (declinedRes||[]).map(function(d){ return d.ticker; });
+  var weights = await getWeights(strat);
+  var weightsPromptText = formatWeightsForPrompt(weights);
 
-  addLog('Loaded universe: '+universe.length+' tickers | Declined this gen: '+s.declined.length);
+  addLog('Loaded universe: '+universe.length+' tickers | Declined this gen: '+s.declined.length+' | Scoring weights: '+weights.length+' calibrated values');
 
   async function runNext() {
     if (published>=total || attempts>=maxAttempts) {
@@ -1064,7 +1093,7 @@ async function generatePicks(strat) {
 
     // Step 4: Deep dive
     var sys = cfg.systemPrompt;
-    var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx);
+    var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '\n\n' + weightsPromptText;
 
     var raw = await ai(sys, usr, 2500, false).catch(function(e){ return null; });
     if (!raw) { addLog('x Deep dive failed'); setTimeout(runNext,1000); return; }
