@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782803269 -->
+<!-- v1782803360 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -914,6 +914,29 @@ function formatWeightsForPrompt(weights) {
     lines.push('  ' + cat + ': ' + byCategory[cat].join(', '));
   });
   return lines.join('\n');
+}
+
+var earningsCalendarCache = null;
+async function getEarningsCalendar() {
+  if (earningsCalendarCache) return earningsCalendarCache;
+  var today = new Date();
+  var end = new Date(today.getTime() + 10*86400000);
+  var fromStr = today.toISOString().split('T')[0];
+  var toStr = end.toISOString().split('T')[0];
+  try {
+    var r = await fetch('https://finnhub.io/api/v1/calendar/earnings?from='+fromStr+'&to='+toStr+'&token='+FHK);
+    var d = await r.json();
+    var entries = d.earningsCalendar || [];
+    // Build a map: ticker -> earnings date, deduped to nearest date per ticker
+    var map = {};
+    entries.forEach(function(e){
+      if (e.symbol && e.date && !map[e.symbol]) map[e.symbol] = e.date;
+    });
+    earningsCalendarCache = map;
+  } catch(e) {
+    earningsCalendarCache = {};
+  }
+  return earningsCalendarCache;
 }
 
 var universeCache = null;
