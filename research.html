@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782791828 -->
+<!-- v1782791844 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -384,6 +384,7 @@ nav {
             <option value="10">10 picks</option>
           </select>
           <button class="generate-btn momentum" id="momentum-genbtn" onclick="generatePicks('momentum')">✦ Generate</button>
+          <button class="monitor-btn" onclick="checkStops('momentum')">🔍 Check Stops/Targets</button>
         </div>
       </div>
       <div class="progress-wrap" id="momentum-progress">
@@ -399,6 +400,7 @@ nav {
       <button class="toggle-btn" id="momentum-tab-learning" onclick="switchSection('momentum','learning')">🧠 Learning Loop</button>
     </div>
     <div class="section-content active" id="momentum-section-picks">
+      <div id="momentum-stop-banner"></div>
       <div class="picks-grid" id="momentum-picks"></div>
     </div>
     <div class="section-content" id="momentum-section-critic">
@@ -441,6 +443,7 @@ nav {
             <option value="10">10 picks</option>
           </select>
           <button class="generate-btn compounder" id="compounder-genbtn" onclick="generatePicks('compounder')">✦ Generate</button>
+          <button class="monitor-btn" onclick="checkStops('compounder')">🔍 Check Stops/Targets</button>
         </div>
       </div>
       <div class="progress-wrap" id="compounder-progress">
@@ -456,6 +459,7 @@ nav {
       <button class="toggle-btn" id="compounder-tab-learning" onclick="switchSection('compounder','learning')">🧠 Learning Loop</button>
     </div>
     <div class="section-content active" id="compounder-section-picks">
+      <div id="compounder-stop-banner"></div>
       <div class="picks-grid" id="compounder-picks"></div>
     </div>
     <div class="section-content" id="compounder-section-critic">
@@ -498,6 +502,7 @@ nav {
             <option value="10">10 picks</option>
           </select>
           <button class="generate-btn catalyst" id="catalyst-genbtn" onclick="generatePicks('catalyst')">✦ Generate</button>
+          <button class="monitor-btn" onclick="checkStops('catalyst')">🔍 Check Stops/Targets</button>
         </div>
       </div>
       <div class="progress-wrap" id="catalyst-progress">
@@ -513,6 +518,7 @@ nav {
       <button class="toggle-btn" id="catalyst-tab-learning" onclick="switchSection('catalyst','learning')">🧠 Learning Loop</button>
     </div>
     <div class="section-content active" id="catalyst-section-picks">
+      <div id="catalyst-stop-banner"></div>
       <div class="picks-grid" id="catalyst-picks"></div>
     </div>
     <div class="section-content" id="catalyst-section-critic">
