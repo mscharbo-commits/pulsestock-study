@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782791871 -->
+<!-- v1782792203 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -385,6 +385,7 @@ nav {
           </select>
           <button class="generate-btn momentum" id="momentum-genbtn" onclick="generatePicks('momentum')">✦ Generate</button>
           <button class="monitor-btn" onclick="checkStops('momentum')">🔍 Check Stops/Targets</button>
+          <button class="monitor-btn" id="momentum-auto-btn" onclick="toggleAutoMonitor('momentum')">▶ Auto-Monitor: OFF</button>
         </div>
       </div>
       <div class="progress-wrap" id="momentum-progress">
@@ -444,6 +445,7 @@ nav {
           </select>
           <button class="generate-btn compounder" id="compounder-genbtn" onclick="generatePicks('compounder')">✦ Generate</button>
           <button class="monitor-btn" onclick="checkStops('compounder')">🔍 Check Stops/Targets</button>
+          <button class="monitor-btn" id="compounder-auto-btn" onclick="toggleAutoMonitor('compounder')">▶ Auto-Monitor: OFF</button>
         </div>
       </div>
       <div class="progress-wrap" id="compounder-progress">
@@ -503,6 +505,7 @@ nav {
           </select>
           <button class="generate-btn catalyst" id="catalyst-genbtn" onclick="generatePicks('catalyst')">✦ Generate</button>
           <button class="monitor-btn" onclick="checkStops('catalyst')">🔍 Check Stops/Targets</button>
+          <button class="monitor-btn" id="catalyst-auto-btn" onclick="toggleAutoMonitor('catalyst')">▶ Auto-Monitor: OFF</button>
         </div>
       </div>
       <div class="progress-wrap" id="catalyst-progress">
@@ -1335,12 +1338,12 @@ async function manualClose(strat, pickId) {
   await closePosition(strat, pick, price, 'manual_close');
 }
 
-async function checkStops(strat) {
+async function checkStops(strat, silent) {
   var s = state[strat];
   var open = s.picks.filter(function(p){ return p.status!=='closed'; });
-  if (!open.length) { toast('No open positions to check'); return; }
+  if (!open.length) { if(!silent) toast('No open positions to check'); return; }
 
-  toast('Checking '+open.length+' positions...');
+  if (!silent) toast('Checking '+open.length+' positions...');
   var triggered = [];
 
   for (var i=0; i<open.length; i++) {
@@ -1359,7 +1362,7 @@ async function checkStops(strat) {
   var banner = document.getElementById(strat+'-stop-banner');
   if (!triggered.length) {
     banner.innerHTML = '';
-    toast('No stops or targets triggered — all '+open.length+' positions within range');
+    if (!silent) toast('No stops or targets triggered — all '+open.length+' positions within range');
     return;
   }
 
@@ -1392,6 +1395,29 @@ async function autoCloseTriggered(strat) {
 
   // Auto-run Critic on the newly closed trades
   setTimeout(function(){ runCritic(strat); }, 1500);
+}
+
+
+// ── AUTO-MONITOR (client-side polling while tab is open) ──
+var autoMonitorIntervals = {};
+
+function toggleAutoMonitor(strat) {
+  var btn = document.getElementById(strat+'-auto-btn');
+  if (autoMonitorIntervals[strat]) {
+    clearInterval(autoMonitorIntervals[strat]);
+    delete autoMonitorIntervals[strat];
+    btn.textContent = '▶ Auto-Monitor: OFF';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+    toast(strat+' auto-monitor stopped');
+  } else {
+    autoMonitorIntervals[strat] = setInterval(function(){ checkStops(strat, true); }, 60000);
+    btn.textContent = '⏸ Auto-Monitor: ON (60s)';
+    btn.style.color = 'var(--g)';
+    btn.style.borderColor = 'var(--g)';
+    toast(strat+' auto-monitor started — checking every 60 seconds while this tab is open');
+    checkStops(strat, true); // run immediately
+  }
 }
 
 // ── TOAST ──
