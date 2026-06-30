@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782792762 -->
+<!-- v1782793320 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -946,9 +946,11 @@ async function generatePicks(strat) {
     if (published>=total || attempts>=maxAttempts) {
       btn.disabled = false;
       toast('Done: '+published+' published, '+declined+' declined ('+attempts+' attempts)');
-      // Reload picks
+      // Reload picks AND declined list fresh from Supabase
       var newPicks = await sbGet('study_picks', '?strategy_id=eq.'+strat+'&declined=eq.false&order=date.desc');
       s.picks = newPicks||[];
+      var freshDeclined = await sbGet('declined_tickers', '?strategy_id=eq.'+strat+'&gen_number=eq.'+s.currentGen);
+      s.declined = (freshDeclined||[]).map(function(d){ return d.ticker; });
       renderStrategyPage(strat);
       return;
     }
