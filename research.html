@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782841824 -->
+<!-- v1782841965 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1073,15 +1073,23 @@ async function generatePicks(strat) {
   // FAST PRE-SCREEN: rank candidates in parallel BEFORE doing any expensive deep dives
   var screenPool = (strat === 'catalyst' && catalystCandidates) ? catalystCandidates : universe;
   var heldNow = s.picks.map(function(p){ return p.ticker; });
-  statusEl.textContent = 'Pre-screening '+screenPool.length+' candidates in parallel...';
+  var screenSampleSize = Math.min(600, screenPool.length);
+  statusEl.textContent = 'Pre-screening '+screenSampleSize+' candidates in parallel...';
+  addLog('🔍 Pre-screening '+screenSampleSize+' candidates from a pool of '+screenPool.length+' (this runs ~15 parallel calls, takes 10-20 seconds)...');
+  var screenStartTime = Date.now();
   var regStrForScreen = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
   var shortlist = strat === 'catalyst'
     ? screenPool // catalyst pool is already small (earnings-confirmed) -- skip extra screening layer
     : await fastPreScreen(strat, screenPool.sort(function(){return Math.random()-.5;}).slice(0, 600), heldNow, s.declined, regStrForScreen);
 
-  if (!shortlist.length) shortlist = screenPool.sort(function(){return Math.random()-.5;}).slice(0,30); // fallback if screen returns nothing
+  if (!shortlist.length) {
+    shortlist = screenPool.sort(function(){return Math.random()-.5;}).slice(0,30);
+    addLog('⚠ Pre-screen returned no results — falling back to random sample of 30');
+  }
   shortlist = shortlist.filter(function(t,i,a){ return a.indexOf(t)===i; }); // dedupe
-  addLog('✓ Pre-screen complete: '+shortlist.length+' shortlisted candidates ready for deep dive (from pool of '+screenPool.length+')');
+  var screenElapsed = ((Date.now()-screenStartTime)/1000).toFixed(1);
+  addLog('✓ Pre-screen complete in '+screenElapsed+'s: '+shortlist.length+' shortlisted candidates ready for deep dive');
+  addLog('Shortlist: '+shortlist.slice(0,20).join(', ')+(shortlist.length>20?' ...+'+(shortlist.length-20)+' more':''));
 
   async function runNext() {
     if (published>=total || attempts>=maxAttempts) {
