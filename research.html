@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782791721 -->
+<!-- v1782791828 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -294,6 +294,33 @@ nav {
   padding: 10px 20px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
   cursor: pointer; margin-bottom: 16px;
 }
+
+.close-btn {
+  margin-top: 10px; width: 100%; padding: 8px; border: 1px solid var(--border);
+  background: #fff; color: var(--text2); border-radius: 8px; font-size: 12px;
+  font-weight: 600; cursor: pointer; transition: all .2s;
+}
+.close-btn:hover { border-color: var(--r); color: var(--r); }
+.stop-banner {
+  background: #FDECEA; border: 1px solid #f5c6c0; border-radius: 12px;
+  padding: 14px 18px; margin-bottom: 16px;
+}
+.stop-banner-title { font-size: 13px; font-weight: 700; color: var(--r); margin-bottom: 10px; }
+.stop-hit-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; border-bottom: 1px solid #f5c6c0; font-size: 13px;
+}
+.stop-hit-row:last-child { border-bottom: none; }
+.auto-close-all-btn {
+  margin-top: 10px; width: 100%; padding: 9px; background: var(--r); color: #fff;
+  border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.monitor-btn {
+  padding: 7px 14px; border: 1px solid var(--border); background: #fff;
+  color: var(--text2); border-radius: 8px; font-size: 12px; font-weight: 600;
+  cursor: pointer; margin-left: 8px;
+}
+.monitor-btn:hover { border-color: var(--accent1); color: var(--accent1); }
 
 @media (max-width: 768px) {
   nav { padding: 0 16px; overflow-x: auto; }
