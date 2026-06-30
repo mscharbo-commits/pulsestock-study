@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782792413 -->
+<!-- v1782792513 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -751,6 +751,7 @@ function renderStats(strat) {
 async function calculateLivePnl(strat, openPicks, realizedPnl) {
   var unrealizedPnl = 0;
   var pricesLoaded = 0;
+  var closedCount = state[strat].closedTrades.length;
 
   for (var i=0; i<openPicks.length; i++) {
     var p = openPicks[i];
@@ -764,12 +765,18 @@ async function calculateLivePnl(strat, openPicks, realizedPnl) {
   }
 
   var totalPnl = realizedPnl + unrealizedPnl;
+  var totalPositions = closedCount + pricesLoaded;
+  var totalInvested = totalPositions * 1000;
+  var pnlPct = totalInvested > 0 ? (totalPnl / totalInvested * 100) : 0;
+
   var el = document.getElementById(strat+'-livepnl');
   var card = document.getElementById(strat+'-pnl-card');
   if (!el) return; // user navigated away
 
   var sign = totalPnl >= 0 ? '+' : '';
-  el.textContent = sign + '$' + Math.abs(totalPnl).toFixed(0);
+  var pctSign = pnlPct >= 0 ? '+' : '';
+  el.innerHTML = sign + '$' + Math.abs(totalPnl).toFixed(0)
+    + ' <span style="font-size:13px;opacity:.75">(' + pctSign + pnlPct.toFixed(1) + '%)</span>';
   if (card) {
     var valEl = card.querySelector('.stat-val');
     if (valEl) valEl.style.color = totalPnl >= 0 ? 'var(--g)' : 'var(--r)';
@@ -777,7 +784,7 @@ async function calculateLivePnl(strat, openPicks, realizedPnl) {
 
   // Show breakdown as title attribute (hover tooltip)
   if (card) {
-    card.title = 'Realized: '+(realizedPnl>=0?'+':'')+'$'+realizedPnl.toFixed(0)+' | Unrealized: '+(unrealizedPnl>=0?'+':'')+'$'+unrealizedPnl.toFixed(0)+' ('+pricesLoaded+'/'+openPicks.length+' open positions priced) | Based on $1000 per position for comparability';
+    card.title = 'Realized: '+(realizedPnl>=0?'+':'')+'$'+realizedPnl.toFixed(0)+' | Unrealized: '+(unrealizedPnl>=0?'+':'')+'$'+unrealizedPnl.toFixed(0)+' ('+pricesLoaded+'/'+openPicks.length+' open positions priced) | Portfolio return: '+pctSign+pnlPct.toFixed(2)+'% on $'+totalInvested.toFixed(0)+' total deployed ($1000/position basis)';
   }
 }
 
