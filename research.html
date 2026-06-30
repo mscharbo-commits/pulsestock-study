@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782791692 -->
+<!-- v1782791721 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -658,6 +658,9 @@ async function loadStrategy(strat) {
   // Load declined
   var dec = await sbGet('declined_tickers', '?strategy_id=eq.'+strat+'&gen_number=eq.'+s.currentGen);
   s.declined = (dec||[]).map(function(d){ return d.ticker; });
+  // Load critiques
+  var crit = await sbGet('critiques', '?strategy_id=eq.'+strat+'&order=id.desc');
+  s.critiques = crit || [];
 }
 
 // ── PAGE NAVIGATION ──
@@ -1113,6 +1116,133 @@ function renderStrategyCompare() {
     +'<div class="perf-row"><span>PulseStock Target (90 days)</span><strong style="color:var(--accent1)">Beat S&P 500</strong></div>'
     +'<div style="font-size:12px;color:var(--text2);margin-top:12px">Insufficient closed trade data to calculate returns. Generate picks across all three strategies and close positions to build the track record.</div>'
     +'</div>';
+}
+
+
+// ── SECTION TOGGLE (Picks / Critic / Learning Loop) ──
+function switchSection(strat, section) {
+  ['picks','critic','learning'].forEach(function(s){
+    document.getElementById(strat+'-tab-'+s).classList.toggle('active', s===section);
+    document.getElementById(strat+'-section-'+s).classList.toggle('active', s===section);
+  });
+  if (section === 'critic') renderCriticList(strat);
+  if (section === 'learning') renderLearningLoop(strat);
+}
+
+function renderCriticList(strat) {
+  var s = state[strat];
+  var el = document.getElementById(strat+'-critic-list');
+  if (!s.critiques || !s.critiques.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔬</div><div class="empty-title">No postmortems yet</div><div class="empty-sub">Run Critic once you have closed trades to analyze</div></div>';
+    return;
+  }
+  el.innerHTML = s.critiques.map(function(c){
+    var isWin = (c.outcome||'').toLowerCase().indexOf('win')>=0;
+    return '<div class="critic-card">'
+      +'<div class="critic-top"><span class="critic-ticker">'+(c.ticker||'')+'</span>'
+      +'<span class="critic-outcome '+(isWin?'outcome-win':'outcome-loss')+'">'+(c.outcome||'').toUpperCase()+'</span></div>'
+      +'<div style="font-size:13px;color:var(--text2);line-height:1.6">'+(c.postmortem||'')+'</div>'
+      +(c.lesson?'<div class="critic-lesson">→ '+c.lesson+'</div>':'')
+      +'</div>';
+  }).join('');
+}
+
+function renderLearningLoop(strat) {
+  var s = state[strat];
+  var colors = {momentum:'var(--accent1)', compounder:'var(--accent2)', catalyst:'var(--accent3)'};
+  document.getElementById(strat+'-rule-count-display').textContent = s.rules.length;
+  var el = document.getElementById(strat+'-rules-list');
+  if (!s.rules.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🧠</div><div class="empty-title">No rules yet</div></div>';
+    return;
+  }
+  el.innerHTML = s.rules.map(function(r, i){
+    return '<div class="rule-evolution-item"><div class="rule-num">'+(i+1)+'</div><div class="rule-text-display">'+r+'</div></div>';
+  }).join('');
+}
+
+async function runCritic(strat) {
+  var s = state[strat];
+  var closed = s.closedTrades;
+  if (!closed.length) { toast('No closed trades yet to analyze for '+strat); return; }
+
+  toast('🔬 Running Critic on '+closed.length+' closed trades...');
+
+  var sys = 'You are Critic AI for the '+strat+' strategy. Analyze closed trades to find what worked and what failed. Respond ONLY in valid JSON array, no markdown.';
+  var usr = 'Analyze these closed trades: '+JSON.stringify(closed.slice(0,15))
+    +' Return JSON array: [{"ticker":"X","outcome":"win|loss","postmortem":"2-3 sentences on what drove this outcome","lesson":"one concrete actionable rule","failure_category":"wrong_timing|wrong_thesis|good_call|overconfidence|regime_mismatch"}]';
+
+  try {
+    var raw = await ai(sys, usr, 2000, false);
+    var items = pj(raw);
+    if (!Array.isArray(items)) throw new Error('Not an array');
+
+    // Save critiques to Supabase
+    for (var i=0; i<items.length; i++) {
+      await sbPost('critiques', {
+        strategy_id: strat,
+        ticker: items[i].ticker,
+        outcome: items[i].outcome,
+        postmortem: items[i].postmortem,
+        lesson: items[i].lesson,
+        failure_category: items[i].failure_category
+      }).catch(function(){});
+    }
+
+    // Reload critiques
+    var fresh = await sbGet('critiques', '?strategy_id=eq.'+strat+'&order=id.desc');
+    s.critiques = fresh || [];
+    renderCriticList(strat);
+    toast('✦ '+items.length+' postmortems generated — updating rules...');
+
+    // Now run rule update from lessons
+    await updateRulesFromCritiques(strat, items);
+
+  } catch(e) {
+    toast('Critic error: '+e.message);
+  }
+}
+
+async function updateRulesFromCritiques(strat, critiqueItems) {
+  var s = state[strat];
+  var lessons = critiqueItems.map(function(c){ return c.lesson; }).filter(Boolean);
+  if (!lessons.length) return;
+
+  var sys = 'You are a trading rules editor. Convert lessons into clear actionable rules. Avoid duplicating existing rules. Respond ONLY with a JSON array of rule strings.';
+  var usr = 'Existing rules: '+JSON.stringify(s.rules)+' New lessons learned: '+JSON.stringify(lessons)
+    +' Return a JSON array of 1-3 NEW rule strings only (do not repeat existing rules). If lessons do not warrant new rules, return [].';
+
+  try {
+    var raw = await ai(sys, usr, 1000, false);
+    var newRules = pj(raw);
+    if (!Array.isArray(newRules) || !newRules.length) {
+      toast('No new rules warranted from this analysis');
+      return;
+    }
+
+    // Dedup check against existing
+    var added = 0;
+    for (var i=0; i<newRules.length; i++) {
+      var nr = newRules[i];
+      var isDupe = s.rules.some(function(er){ return er.substring(0,50)===nr.substring(0,50); });
+      if (!isDupe) {
+        await sbPost('rules', {strategy_id: strat, rule_text: nr, rule_version: 'learned', active: true});
+        s.rules.push(nr);
+        added++;
+      }
+    }
+
+    renderLearningLoop(strat);
+    renderGenSelector(strat);
+    toast('✦ Learning Loop complete — '+added+' new rule(s) added ('+s.rules.length+' total)');
+
+    // Auto-create new generation if rules grew meaningfully
+    if (added >= 2) {
+      setTimeout(function(){ createGen(strat); }, 1500);
+    }
+  } catch(e) {
+    toast('Rule update error: '+e.message);
+  }
 }
 
 // ── TOAST ──
