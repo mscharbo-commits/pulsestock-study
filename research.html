@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782792513 -->
+<!-- v1782792762 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1205,13 +1205,22 @@ function renderStrategyCompare() {
 
 
 // ── SECTION TOGGLE (Picks / Critic / Learning Loop) ──
-function switchSection(strat, section) {
+async function switchSection(strat, section) {
   ['picks','critic','learning'].forEach(function(s){
     document.getElementById(strat+'-tab-'+s).classList.toggle('active', s===section);
     document.getElementById(strat+'-section-'+s).classList.toggle('active', s===section);
   });
-  if (section === 'critic') renderCriticList(strat);
-  if (section === 'learning') renderLearningLoop(strat);
+  if (section === 'learning') {
+    // Always refresh rules from Supabase before rendering — avoids stale/empty state from load timing
+    var rules = await sbGet('rules', '?strategy_id=eq.'+strat+'&active=eq.true&order=id.asc');
+    state[strat].rules = (rules||[]).map(function(r){ return r.rule_text; });
+    renderLearningLoop(strat);
+  }
+  if (section === 'critic') {
+    var crit = await sbGet('critiques', '?strategy_id=eq.'+strat+'&order=id.desc');
+    state[strat].critiques = crit || [];
+    renderCriticList(strat);
+  }
 }
 
 function renderCriticList(strat) {
