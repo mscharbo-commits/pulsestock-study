@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782933538 -->
+<!-- v1782933637 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1183,9 +1183,20 @@ async function generatePicks(strat) {
       } catch(e){ return null; }
     }
 
-    // Fire ALL deep dives simultaneously across the entire shortlist
+    // Fire deep dives in waves of 8 to avoid Anthropic rate limits
+    // 8 concurrent is fast but won't overwhelm the API
+    var WAVE_SIZE = 8;
     var startTime = Date.now();
-    var results = await Promise.all(candidates.map(deepDiveOne));
+    var results = [];
+    for (var wi = 0; wi < candidates.length; wi += WAVE_SIZE) {
+      var wave = candidates.slice(wi, wi + WAVE_SIZE);
+      statusEl.textContent = 'Deep diving wave '+(Math.floor(wi/WAVE_SIZE)+1)+'/'+Math.ceil(candidates.length/WAVE_SIZE)+' ('+wave.length+' picks)...';
+      var waveResults = await Promise.all(wave.map(deepDiveOne));
+      results = results.concat(waveResults);
+      var wavePass = waveResults.filter(function(r){ return r && !r.declined; }).length;
+      addLog('Wave '+(Math.floor(wi/WAVE_SIZE)+1)+': '+wavePass+' passed, '+(waveResults.length-wavePass)+' declined/failed');
+      if (wi + WAVE_SIZE < candidates.length) await new Promise(function(r){ setTimeout(r, 1000); });
+    }
     var elapsed = ((Date.now()-startTime)/1000).toFixed(1);
 
     // Sort passing picks by confidence score descending — best picks first
