@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782841965 -->
+<!-- v1782905320 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1091,167 +1091,116 @@ async function generatePicks(strat) {
   addLog('✓ Pre-screen complete in '+screenElapsed+'s: '+shortlist.length+' shortlisted candidates ready for deep dive');
   addLog('Shortlist: '+shortlist.slice(0,20).join(', ')+(shortlist.length>20?' ...+'+(shortlist.length-20)+' more':''));
 
-  async function runNext() {
-    if (published>=total || attempts>=maxAttempts) {
+  // PARALLEL DEEP DIVE: take top candidates from shortlist, fire all at once
+  async function runParallelDeepDives() {
+    var held = s.picks.map(function(p){ return p.ticker; });
+    var candidates = shortlist.filter(function(t){
+      return held.indexOf(t)<0 && s.declined.indexOf(t)<0;
+    }).slice(0, Math.max(total*3, 15)); // take 3x what we need to ensure enough pass the gate
+
+    if (!candidates.length) {
       btn.disabled = false;
-      toast('Done: '+published+' published, '+declined+' declined ('+attempts+' attempts)');
-      // Reload picks AND declined list fresh from Supabase
+      addLog('x No candidates remaining in shortlist');
+      toast('Done: '+published+' published — shortlist exhausted');
       var newPicks = await sbGet('study_picks', '?strategy_id=eq.'+strat+'&declined=eq.false&order=date.desc');
       s.picks = newPicks||[];
-      var freshDeclined = await sbGet('declined_tickers', '?strategy_id=eq.'+strat+'&gen_number=eq.'+s.currentGen);
-      s.declined = (freshDeclined||[]).map(function(d){ return d.ticker; });
       renderStrategyPage(strat);
       return;
     }
-    attempts++;
-    updateBar();
 
-    // Held tickers
-    var held = s.picks.map(function(p){ return p.ticker; });
-
-    // Use the pre-screened shortlist instead of blind random sampling -- already ranked by conviction
-    var available = shortlist.filter(function(t){
-      return held.indexOf(t)<0 && s.declined.indexOf(t)<0;
-    });
-
-    if (available.length === 0) {
-      addLog('x No shortlisted candidates remain (all held/declined) — stopping batch');
-      attempts = maxAttempts;
-      setTimeout(runNext, 100);
-      return;
-    }
-
-    var sample = available.slice(0, 30); // already ranked, take top of what remains
-
-    // Get current regime and rules
+    addLog('🚀 Running '+candidates.length+' deep dives in parallel...');
+    statusEl.textContent = 'Deep diving '+candidates.length+' candidates simultaneously...';
     var regStr = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
-    var rulesStr = s.rules.length ? 'RULES (apply all): '+s.rules.slice(0,8).join(' | ') : 'No learned rules yet.';
-    var heldStr = held.length ? 'BLACKLIST (already held — do NOT pick): '+held.join(',') : '';
-    var catalystDateStr = '';
-    if (strat === 'catalyst' && sample.length) {
-      catalystDateStr = ' EARNINGS DATES for these candidates: ' + sample.map(function(t){ return t+'='+(earningsMap[t]||'?'); }).join(',') + '.';
-    }
-    var univStr = sample.length ? 'Pick from this list only (these are PRE-CONFIRMED to have a catalyst in the window): '+sample.join(',') : '';
+    var rulesStr = s.rules.length ? 'RULES (apply all): '+s.rules.slice(0,10).join(' | ') : 'No learned rules yet.';
 
-    // Step 1: Nomination
-    var nomSys = 'You are a stock picking AI. Respond ONLY with raw JSON, no markdown.';
-    var nomUsr = 'Today: '+new Date().toDateString()+'. '+heldStr+' '+univStr+(strat==='catalyst'?catalystDateStr:'')+' '+regStr
-      +' Nominate ONE stock with highest conviction for '+strat+' strategy. JSON only: {"ticker":"SYMBOL","reason":"one sentence"}';
-
-    var nomRaw = await ai(nomSys, nomUsr, 300, true).catch(function(){ return null; });
-    if (!nomRaw) { addLog('x Nomination failed'); setTimeout(runNext,500); return; }
-
-    var nom;
-    try { nom = pj(nomRaw); } catch(e) {
-      var m = nomRaw.match(/"ticker"\s*:\s*"([A-Z]{1,5})"/);
-      nom = m ? {ticker:m[1],reason:''} : null;
-    }
-    if (!nom||!nom.ticker) { addLog('x Parse error'); setTimeout(runNext,500); return; }
-
-    var ticker = nom.ticker.toUpperCase().replace(/[^A-Z]/g,'');
-    if (!ticker||ticker.length<1||ticker.length>5) { addLog('x Invalid ticker'); setTimeout(runNext,500); return; }
-    if (held.indexOf(ticker)>=0) { addLog('x '+ticker+' already held'); setTimeout(runNext,300); return; }
-    if (s.declined.indexOf(ticker)>=0) { addLog('x '+ticker+' previously declined'); setTimeout(runNext,300); return; }
-
-    addLog('→ '+ticker+': '+(nom.reason||'').substring(0,70));
-
-    // Step 2: Price
-    var price = await getPrice(ticker);
-    if (price) addLog('→ Price: $'+price.toFixed(2));
-
-    // Step 3: Technicals — structure, relative strength, VWAP estimate, ATR
-    var metric = await fh('stock/metric?symbol='+ticker+'&metric=all');
-    var mt = metric&&metric.metric ? metric.metric : {};
-    var w52h=mt['52WeekHigh']?parseFloat(mt['52WeekHigh']):null;
-    var w52l=mt['52WeekLow']?parseFloat(mt['52WeekLow']):null;
-    var rsi=mt['rsi14d']?parseFloat(mt['rsi14d']).toFixed(1):null;
-    var beta=mt['beta']?parseFloat(mt['beta']).toFixed(2):null;
-    var rangePos=null;
-    if(w52h&&w52l&&w52h>w52l&&price){
-      var rp=(price-w52l)/(w52h-w52l)*100;
-      rangePos=rp>=0&&rp<=200?rp.toFixed(0):null;
-    }
-    // Structure inference: top 65%+ of range = uptrend structure intact, bottom 35% = downtrend
-    var structureSignal = rangePos ? (parseFloat(rangePos)>=65?'UPTREND — HH/HL structure likely intact':parseFloat(rangePos)<=35?'DOWNTREND — structure broken, avoid':'RANGE-BOUND — no clear structure') : 'unknown';
-    // VWAP estimate: use 10-day average price as a daily-bar proxy for VWAP (true intraday VWAP requires real-time feed)
-    var quote10d = await fh('quote?symbol='+ticker);
-    var prevClose = quote10d&&quote10d.pc ? quote10d.pc : price;
-    var vwapEstimate = prevClose; // proxy until intraday feed is available
-    var vwapBias = price&&vwapEstimate ? (price>vwapEstimate?'ABOVE estimated VWAP — bullish bias':'BELOW estimated VWAP — bearish bias') : 'unknown';
-    // ATR estimate from day range as proxy (true 14-day ATR requires candle history)
-    var dayRange = quote10d&&quote10d.h&&quote10d.l ? (quote10d.h-quote10d.l) : null;
-    var atrEstimate = dayRange ? dayRange*1.8 : (price?price*0.02:null); // rough multiplier proxy
-    var atrStop = atrEstimate&&price ? (price-atrEstimate*1.5).toFixed(2) : null;
-    var atrTarget = atrEstimate&&price ? (price+atrEstimate*2.5).toFixed(2) : null;
-
-    var techCtx = price||w52h ? 'TECHNICALS (apply hierarchy: structure > relative strength > VWAP > ATR > RSI/MACD confirmation):'
-      +(price?' Price=$'+price.toFixed(2):'')
-      +(structureSignal!=='unknown'?' STRUCTURE='+structureSignal:'')
-      +(rangePos?' 52W-RangePos='+rangePos+'%':'')
-      +(vwapBias!=='unknown'?' VWAP_BIAS='+vwapBias+' (est. VWAP ~$'+vwapEstimate.toFixed(2)+')':'')
-      +(atrStop?' ATR-based Stop=$'+atrStop+' Target=$'+atrTarget:'')
-      +(rsi?' RSI='+rsi+' (use 40-80 band in uptrend, 20-60 in downtrend — NOT classic 70/30)':'')
-      +(beta?' Beta='+beta:'')
-      +' NOTE: VWAP and ATR are daily-bar proxies pending intraday data feed — treat as directional guidance not precise institutional VWAP.'
-      : 'No technical data — use web_search for current price, structure, and relative strength vs sector.';
-
-    // Step 4: Deep dive
-    var sys = cfg.systemPrompt;
-    var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '\n\n' + weightsPromptText;
-
-    var raw = await ai(sys, usr, 3500, false).catch(function(e){ return null; });
-    if (!raw) { addLog('x Deep dive failed'); setTimeout(runNext,1000); return; }
-
-    var pick;
-    try { pick = pj(raw); } catch(e) { addLog('x Parse error on deep dive'); setTimeout(runNext,1000); return; }
-
-    if (pick.confidence!==undefined&&pick.confidence<=1) pick.confidence=Math.round(pick.confidence*100);
-
-    // Enforce confidence gate
-    if (!pick.declined && (pick.confidence||0) < cfg.gate) {
-      pick.declined = true;
-      pick.decline_reason = 'Confidence '+(pick.confidence||0)+'% below '+cfg.gate+'% gate';
-    }
-
-    if (pick.declined) {
-      declined++;
-      addLog('x Declined: '+(pick.decline_reason||'').substring(0,70));
-      // Save to declined list
-      s.declined.push(ticker);
-      await sbPost('declined_tickers', {strategy_id:strat, gen_number:s.currentGen, ticker:ticker, reason:pick.decline_reason||''}).catch(function(){});
-      setTimeout(runNext, 1500);
-      return;
-    }
-
-    // Apply live price
-    if (price && pick.entry_price) {
-      var ratio = price / pick.entry_price;
-      if (ratio > 0.5 && ratio < 2) {
-        pick.target_price = parseFloat((price * (pick.target_price/pick.entry_price)).toFixed(2));
-        pick.stop_loss = parseFloat((price * (pick.stop_loss/pick.entry_price)).toFixed(2));
-        pick.entry_price = price;
+    async function deepDiveOne(ticker) {
+      var price = await getPrice(ticker);
+      var metric = await fh('stock/metric?symbol='+ticker+'&metric=all');
+      var mt = metric&&metric.metric ? metric.metric : {};
+      var w52h=mt['52WeekHigh']?parseFloat(mt['52WeekHigh']):null;
+      var w52l=mt['52WeekLow']?parseFloat(mt['52WeekLow']):null;
+      var rsi=mt['rsi14d']?parseFloat(mt['rsi14d']).toFixed(1):null;
+      var beta=mt['beta']?parseFloat(mt['beta']).toFixed(2):null;
+      var rangePos=null;
+      if(w52h&&w52l&&w52h>w52l&&price){
+        var rp=(price-w52l)/(w52h-w52l)*100;
+        rangePos=rp>=0&&rp<=200?rp.toFixed(0):null;
       }
-    } else if (price) {
-      pick.entry_price = price;
-      pick.target_price = parseFloat((price*1.08).toFixed(2));
-      pick.stop_loss = parseFloat((price*0.965).toFixed(2));
+      var structureSignal = rangePos?(parseFloat(rangePos)>=65?'UPTREND':parseFloat(rangePos)<=35?'DOWNTREND':'RANGE-BOUND'):'unknown';
+      var techCtx = 'TECHNICALS:'+(price?' Price=$'+price.toFixed(2):' no price')+
+        (w52h?' 52WH=$'+w52h.toFixed(2):'')+
+        (w52l?' 52WL=$'+w52l.toFixed(2):'')+
+        (rangePos?' RangePos='+rangePos+'% ('+structureSignal+')':'')+
+        (rsi?' RSI='+rsi:'')+
+        (beta?' Beta='+beta:'')+
+        (price&&w52h?' VWAP_est=~$'+((price*0.985)).toFixed(2):'');
+      if(!price&&!w52h) techCtx='No technical data — use web_search for current price and momentum.';
+
+      var sys = cfg.systemPrompt;
+      var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '
+
+' + weightsPromptText;
+      try {
+        var raw = await ai(sys, usr, 2000, false); // reduced to 2000 for speed — still enough for scoring
+        if(!raw) return null;
+        var pick = pj(raw);
+        if(pick.confidence!==undefined&&pick.confidence<=1) pick.confidence=Math.round(pick.confidence*100);
+        if(!pick.declined&&(pick.confidence||0)<cfg.gate){
+          pick.declined=true;
+          pick.decline_reason='Confidence '+(pick.confidence||0)+'% below '+cfg.gate+'% gate';
+        }
+        if(price&&pick.entry_price){
+          var ratio=price/pick.entry_price;
+          if(ratio>0.5&&ratio<2){
+            pick.target_price=parseFloat((price*(pick.target_price/pick.entry_price)).toFixed(2));
+            pick.stop_loss=parseFloat((price*(pick.stop_loss/pick.entry_price)).toFixed(2));
+            pick.entry_price=price;
+          }
+        } else if(price){
+          pick.entry_price=price;
+          pick.target_price=parseFloat((price*1.08).toFixed(2));
+          pick.stop_loss=parseFloat((price*0.965).toFixed(2));
+        }
+        pick.id=Date.now().toString()+Math.random().toString(36).slice(2,6);
+        pick.strategy_id=strat;
+        pick.gen_number=s.currentGen;
+        pick.status='open';
+        return pick;
+      } catch(e){ return null; }
     }
 
-    pick.id = Date.now().toString();
-    pick.strategy_id = strat;
-    pick.gen_number = s.currentGen;
-    pick.status = 'open';
-
-    // Save to Supabase
-    await sbPost('study_picks', pick).catch(function(e){ addLog('x Save error: '+e.message); });
-    s.picks.unshift(pick);
-    published++;
-    addLog('+ '+ticker+' @ $'+(pick.entry_price?(+pick.entry_price).toFixed(2):'?')+' — '+pick.confidence+'% conf');
-    renderPicks(strat);
-    setTimeout(runNext, 2000);
+    // Fire ALL deep dives simultaneously
+    var results = await Promise.all(candidates.map(deepDiveOne));
+    var batchPublished = 0;
+    for(var i=0; i<results.length; i++){
+      var pick = results[i];
+      if(!pick) continue;
+      if(pick.declined){
+        declined++;
+        s.declined.push(candidates[i]);
+        await sbPost('declined_tickers',{strategy_id:strat,gen_number:s.currentGen,ticker:candidates[i],reason:pick.decline_reason||''}).catch(function(){});
+        addLog('x Declined: '+candidates[i]+' — '+(pick.decline_reason||'').substring(0,60));
+      } else if(published<total){
+        await sbPost('study_picks',pick).catch(function(e){ addLog('x Save error: '+e.message); });
+        s.picks.unshift(pick);
+        published++;
+        batchPublished++;
+        addLog('+ '+candidates[i]+' @ $'+(pick.entry_price?(+pick.entry_price).toFixed(2):'?')+' — '+pick.confidence+'% conf');
+        renderPicks(strat);
+      }
+    }
+    
+    btn.disabled=false;
+    statusEl.textContent='Done — '+published+' published, '+declined+' declined';
+    barEl.style.width='100%';
+    countEl.textContent=published+'/'+total;
+    toast('✦ Done: '+published+' published, '+declined+' declined');
+    var newPicks=await sbGet('study_picks','?strategy_id=eq.'+strat+'&declined=eq.false&order=date.desc');
+    s.picks=newPicks||[];
+    renderStrategyPage(strat);
   }
 
-  runNext();
+  runParallelDeepDives();
 }
 
 // ── CREATE GENERATION ──
