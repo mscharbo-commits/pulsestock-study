@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782933234 -->
+<!-- v1782933538 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1208,42 +1208,40 @@ async function generatePicks(strat) {
     for(var i=0; i<toPublish.length; i++){
       var pick = toPublish[i];
       var tickerLabel = pick._ticker || pick.ticker;
-      // Strip internal/temp fields before DB save
+      // Strip internal/temp fields before DB save — explicit field list matching schema exactly
       var dbPick = {
-        id: pick.id,
-        ticker: pick.ticker || tickerLabel,
-        strategy_id: pick.strategy_id,
-        gen_number: pick.gen_number,
-        status: pick.status,
+        id: tickerLabel + '_' + lockedGenNumber + '_' + Date.now(),
+        ticker: tickerLabel,
+        strategy_id: strat,
+        gen_number: lockedGenNumber,
+        status: 'open',
         action: pick.action || 'BUY',
-        entry_price: pick.entry_price || null,
-        target_price: pick.target_price || null,
-        stop_loss: pick.stop_loss || null,
+        entry_price: parseFloat(pick.entry_price) || null,
+        target_price: parseFloat(pick.target_price) || null,
+        stop_loss: parseFloat(pick.stop_loss) || null,
         sector: pick.sector || '',
         timeframe: pick.timeframe || '',
-        confidence: pick.confidence || 0,
+        confidence: parseInt(pick.confidence) || 0,
         reasoning: pick.reasoning || '',
         key_risk: pick.key_risk || '',
         chain_of_thought: pick.chain_of_thought || '',
         regime_context: pick.regime_context || '',
-        date: pick.date || new Date().toISOString(),
-        declined: false,
-        decline_reason: null,
-        return_pct: null,
-        exit_price: null,
-        exit_reason: null,
-        exit_date: null
+        date: new Date().toISOString(),
+        declined: false
       };
       var saveResult = await sbPost('study_picks', dbPick).catch(function(e){
         addLog('x Save error for '+tickerLabel+': '+e.message);
         return null;
       });
-      if(saveResult) {
-        s.picks.unshift(pick);
+      // sbPost returns array on success, null on catch
+      var saved = saveResult !== null && saveResult !== undefined;
+      if(saved) {
+        dbPick.id = (Array.isArray(saveResult) && saveResult[0]) ? saveResult[0].id : dbPick.id;
+        s.picks.unshift(dbPick);
         published++;
-        addLog('+ '+tickerLabel+' @ $'+(pick.entry_price?(+pick.entry_price).toFixed(2):'?')+' — '+pick.confidence+'% conf — SAVED');
+        addLog('+ '+tickerLabel+' @ $'+(dbPick.entry_price?dbPick.entry_price.toFixed(2):'?')+' — '+pick.confidence+'% conf — SAVED ✓');
       } else {
-        addLog('x '+tickerLabel+' — save failed, not counted');
+        addLog('x '+tickerLabel+' — save returned null, skipping');
       }
     }
 
