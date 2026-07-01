@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782930695 -->
+<!-- v1782930830 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -965,9 +965,14 @@ async function fastPreScreen(strat, candidates, held, declinedList, regStr) {
   }
 
   // Fire all chunks in parallel -- this is the speed win, not sequential one-by-one
+  console.log('[Screen] Firing '+chunks.length+' parallel Haiku chunks for '+pool.length+' candidates');
   var results = await Promise.all(chunks.map(screenChunk));
   var shortlist = [];
-  results.forEach(function(r){ shortlist = shortlist.concat(r); });
+  results.forEach(function(r, i){ 
+    console.log('[Screen] Chunk '+i+' returned '+r.length+' candidates: '+r.join(','));
+    shortlist = shortlist.concat(r); 
+  });
+  console.log('[Screen] Total shortlist: '+shortlist.length);
   return shortlist;
 }
 
@@ -1076,9 +1081,9 @@ async function generatePicks(strat) {
   addLog('🔍 Pre-screening '+screenSampleSize+' candidates from a pool of '+screenPool.length+' (this runs ~15 parallel calls, takes 10-20 seconds)...');
   var screenStartTime = Date.now();
   var regStrForScreen = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
-  var shortlist = strat === 'catalyst'
-    ? screenPool // catalyst pool is already small (earnings-confirmed) -- skip extra screening layer
-    : await fastPreScreen(strat, screenPool.sort(function(){return Math.random()-.5;}).slice(0, 600), heldNow, s.declined, regStrForScreen);
+  // All strategies go through fastPreScreen — Catalyst uses its own hint to find catalyst names
+  var screenSample = screenPool.sort(function(){return Math.random()-.5;}).slice(0, 600);
+  var shortlist = await fastPreScreen(strat, screenSample, heldNow, s.declined, regStrForScreen);
 
   if (shortlist.length < 10) {
     var randomFallback = screenPool.filter(function(t){
