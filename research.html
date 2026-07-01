@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782933156 -->
+<!-- v1782933234 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1207,10 +1207,44 @@ async function generatePicks(strat) {
     var toPublish = passing.slice(0, total);
     for(var i=0; i<toPublish.length; i++){
       var pick = toPublish[i];
-      await sbPost('study_picks', pick).catch(function(e){ addLog('x Save error: '+e.message); });
-      s.picks.unshift(pick);
-      published++;
-      addLog('+ '+(pick._ticker||pick.ticker)+' @ $'+(pick.entry_price?(+pick.entry_price).toFixed(2):'?')+' — '+pick.confidence+'% conf');
+      var tickerLabel = pick._ticker || pick.ticker;
+      // Strip internal/temp fields before DB save
+      var dbPick = {
+        id: pick.id,
+        ticker: pick.ticker || tickerLabel,
+        strategy_id: pick.strategy_id,
+        gen_number: pick.gen_number,
+        status: pick.status,
+        action: pick.action || 'BUY',
+        entry_price: pick.entry_price || null,
+        target_price: pick.target_price || null,
+        stop_loss: pick.stop_loss || null,
+        sector: pick.sector || '',
+        timeframe: pick.timeframe || '',
+        confidence: pick.confidence || 0,
+        reasoning: pick.reasoning || '',
+        key_risk: pick.key_risk || '',
+        chain_of_thought: pick.chain_of_thought || '',
+        regime_context: pick.regime_context || '',
+        date: pick.date || new Date().toISOString(),
+        declined: false,
+        decline_reason: null,
+        return_pct: null,
+        exit_price: null,
+        exit_reason: null,
+        exit_date: null
+      };
+      var saveResult = await sbPost('study_picks', dbPick).catch(function(e){
+        addLog('x Save error for '+tickerLabel+': '+e.message);
+        return null;
+      });
+      if(saveResult) {
+        s.picks.unshift(pick);
+        published++;
+        addLog('+ '+tickerLabel+' @ $'+(pick.entry_price?(+pick.entry_price).toFixed(2):'?')+' — '+pick.confidence+'% conf — SAVED');
+      } else {
+        addLog('x '+tickerLabel+' — save failed, not counted');
+      }
     }
 
     if(passing.length > total) {
