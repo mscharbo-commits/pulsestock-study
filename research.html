@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782931002 -->
+<!-- v1782932452 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1100,9 +1100,10 @@ async function generatePicks(strat) {
   // PARALLEL DEEP DIVE: take top candidates from shortlist, fire all at once
   async function runParallelDeepDives() {
     var held = s.picks.map(function(p){ return p.ticker; });
+    // Run ALL shortlist candidates — no cap. This is the whole point: analyze the entire ranked universe.
     var candidates = shortlist.filter(function(t){
       return held.indexOf(t)<0 && s.declined.indexOf(t)<0;
-    }).slice(0, Math.max(total*3, 15)); // take 3x what we need to ensure enough pass the gate
+    });
 
     if (!candidates.length) {
       btn.disabled = false;
@@ -1114,8 +1115,8 @@ async function generatePicks(strat) {
       return;
     }
 
-    addLog('🚀 Running '+candidates.length+' deep dives in parallel...');
-    statusEl.textContent = 'Deep diving '+candidates.length+' candidates simultaneously...';
+    addLog('🚀 Running '+candidates.length+' deep dives in parallel across full shortlist...');
+    statusEl.textContent = 'Deep diving all '+candidates.length+' candidates simultaneously...';
     var regStr = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
     var rulesStr = s.rules.length ? 'RULES (apply all): '+s.rules.slice(0,10).join(' | ') : 'No learned rules yet.';
 
@@ -1139,15 +1140,18 @@ async function generatePicks(strat) {
         (rangePos?' RangePos='+rangePos+'% ('+structureSignal+')':'')+
         (rsi?' RSI='+rsi:'')+
         (beta?' Beta='+beta:'')+
-        (price&&w52h?' VWAP_est=~$'+((price*0.985)).toFixed(2):'');
-      if(!price&&!w52h) techCtx='No technical data — use web_search for current price and momentum.';
+        (price&&w52h?' VWAP_est=$'+((price*0.985)).toFixed(2):'');
+      if(!price&&!w52h) techCtx='No technical data available.';
 
       var sys = cfg.systemPrompt;
-      var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '\n\n' + weightsPromptText;
+      var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '
+
+' + weightsPromptText;
       try {
-        var raw = await ai(sys, usr, 2000, false); // reduced to 2000 for speed — still enough for scoring
+        var raw = await ai(sys, usr, 2000, false);
         if(!raw) return null;
         var pick = pj(raw);
+        if(!pick||!pick.ticker) return null;
         if(pick.confidence!==undefined&&pick.confidence<=1) pick.confidence=Math.round(pick.confidence*100);
         if(!pick.declined&&(pick.confidence||0)<cfg.gate){
           pick.declined=true;
@@ -1169,36 +1173,53 @@ async function generatePicks(strat) {
         pick.strategy_id=strat;
         pick.gen_number=s.currentGen;
         pick.status='open';
+        pick._ticker=ticker; // preserve for logging
         return pick;
       } catch(e){ return null; }
     }
 
-    // Fire ALL deep dives simultaneously
+    // Fire ALL deep dives simultaneously across the entire shortlist
+    var startTime = Date.now();
     var results = await Promise.all(candidates.map(deepDiveOne));
-    var batchPublished = 0;
-    for(var i=0; i<results.length; i++){
-      var pick = results[i];
-      if(!pick) continue;
-      if(pick.declined){
-        declined++;
-        s.declined.push(candidates[i]);
-        await sbPost('declined_tickers',{strategy_id:strat,gen_number:s.currentGen,ticker:candidates[i],reason:pick.decline_reason||''}).catch(function(){});
-        addLog('x Declined: '+candidates[i]+' — '+(pick.decline_reason||'').substring(0,60));
-      } else if(published<total){
-        await sbPost('study_picks',pick).catch(function(e){ addLog('x Save error: '+e.message); });
-        s.picks.unshift(pick);
-        published++;
-        batchPublished++;
-        addLog('+ '+candidates[i]+' @ $'+(pick.entry_price?(+pick.entry_price).toFixed(2):'?')+' — '+pick.confidence+'% conf');
-        renderPicks(strat);
-      }
+    var elapsed = ((Date.now()-startTime)/1000).toFixed(1);
+
+    // Sort passing picks by confidence score descending — best picks first
+    var passing = results.filter(function(p){ return p && !p.declined; });
+    var declinedResults = results.filter(function(p){ return p && p.declined; });
+    passing.sort(function(a,b){ return (b.confidence||0)-(a.confidence||0); });
+
+    addLog('✓ Deep dive complete in '+elapsed+'s: '+passing.length+' passed gate, '+declinedResults.length+' declined, '+(results.filter(function(r){return !r;}).length)+' failed');
+
+    // Log declines
+    declinedResults.forEach(function(p){
+      declined++;
+      s.declined.push(p._ticker||p.ticker);
+      sbPost('declined_tickers',{strategy_id:strat,gen_number:s.currentGen,ticker:p._ticker||p.ticker,reason:p.decline_reason||''}).catch(function(){});
+      addLog('x Declined: '+(p._ticker||p.ticker)+' — '+(p.decline_reason||'').substring(0,60));
+    });
+
+    // Save top N passing picks (up to what was requested)
+    var toPublish = passing.slice(0, total);
+    for(var i=0; i<toPublish.length; i++){
+      var pick = toPublish[i];
+      await sbPost('study_picks', pick).catch(function(e){ addLog('x Save error: '+e.message); });
+      s.picks.unshift(pick);
+      published++;
+      addLog('+ '+(pick._ticker||pick.ticker)+' @ $'+(pick.entry_price?(+pick.entry_price).toFixed(2):'?')+' — '+pick.confidence+'% conf');
     }
-    
+
+    if(passing.length > total) {
+      addLog('ℹ '+(passing.length-total)+' additional picks also passed the gate but not published (requested '+total+' only)');
+    }
+
+    renderPicks(strat);
     btn.disabled=false;
-    statusEl.textContent='Done — '+published+' published, '+declined+' declined';
+    statusEl.textContent='Done — '+published+' published from '+candidates.length+' analyzed';
     barEl.style.width='100%';
     countEl.textContent=published+'/'+total;
-    toast('✦ Done: '+published+' published, '+declined+' declined');
+    updateBar();
+    toast('✦ Done: '+published+' published (best by confidence from '+candidates.length+' analyzed)');
+
     var newPicks=await sbGet('study_picks','?strategy_id=eq.'+strat+'&declined=eq.false&order=date.desc');
     s.picks=newPicks||[];
     renderStrategyPage(strat);
