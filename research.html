@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782907140 -->
+<!-- v1782907421 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -949,7 +949,7 @@ async function fastPreScreen(strat, candidates, held, declinedList, regStr) {
   var chunks = [];
   for (var i=0; i<pool.length; i+=CHUNK_SIZE) chunks.push(pool.slice(i, i+CHUNK_SIZE));
 
-  var strategyHint = strat==='catalyst' ? 'a near-term dated catalyst (earnings, FDA, launch) plus fresh technical setup (VWAP/momentum, not already extended)'
+  var strategyHint = strat==='catalyst' ? 'ANY near-term dated catalyst in the next 10 days: earnings, FDA decision, product launch, stock split, analyst day, major contract, index inclusion — plus fresh technical setup (VWAP/momentum, not already extended, crowd not yet positioned)'
     : strat==='compounder' ? 'durable competitive moat, strong free cash flow, reasonable valuation for a multi-year hold'
     : 'strong fundamental + technical momentum alignment with the current market regime for a 10-60 day hold';
 
@@ -1053,25 +1053,24 @@ async function generatePicks(strat) {
   var weights = await getWeights(strat);
   var weightsPromptText = formatWeightsForPrompt(weights);
 
-  // Catalyst Swing: pre-filter universe to ONLY tickers with confirmed earnings in next 10 days
-  // This replaces blind random search with an instant, accurate calendar-based screen
+  // Catalyst Swing: earnings calendar is ONE signal, not the universe gate
+  // Use full universe so non-earnings catalysts (FDA, splits, launches, analyst days) are not excluded
   var catalystCandidates = null;
   var earningsMap = {};
   if (strat === 'catalyst') {
-    addLog('Fetching earnings calendar for next 10 days...');
-    earningsMap = await getEarningsCalendar();
-    var tickersWithEarnings = Object.keys(earningsMap).filter(function(t){ return universe.indexOf(t) >= 0; });
-    catalystCandidates = tickersWithEarnings;
-    addLog('Earnings calendar: '+Object.keys(earningsMap).length+' companies reporting in window, '+tickersWithEarnings.length+' overlap with our universe');
-    if (!tickersWithEarnings.length) {
-      addLog('x No earnings-driven candidates found in the next 10 days for this universe');
-    }
+    // Fetch earnings calendar to ENRICH the prompt with known dates, not to restrict the universe
+    try {
+      earningsMap = await getEarningsCalendar();
+      addLog('Earnings calendar loaded: '+Object.keys(earningsMap).length+' confirmed earnings in next 10 days (used as enrichment signal, not a gate)');
+    } catch(e) { earningsMap = {}; }
+    // catalystCandidates stays null — use full universe so all catalyst types are eligible
   }
 
   addLog('Loaded universe: '+universe.length+' tickers | Declined this gen: '+s.declined.length+' | Scoring weights: '+weights.length+' calibrated values');
 
   // FAST PRE-SCREEN: rank candidates in parallel BEFORE doing any expensive deep dives
-  var screenPool = (strat === 'catalyst' && catalystCandidates) ? catalystCandidates : universe;
+  // All strategies use full universe — pre-screen finds best fits regardless of catalyst type
+  var screenPool = universe;
   var heldNow = s.picks.map(function(p){ return p.ticker; });
   var screenSampleSize = Math.min(600, screenPool.length);
   statusEl.textContent = 'Pre-screening '+screenSampleSize+' candidates in parallel...';
