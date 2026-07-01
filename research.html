@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782905320 -->
+<!-- v1782907140 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1137,9 +1137,7 @@ async function generatePicks(strat) {
       if(!price&&!w52h) techCtx='No technical data — use web_search for current price and momentum.';
 
       var sys = cfg.systemPrompt;
-      var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '
-
-' + weightsPromptText;
+      var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '\n\n' + weightsPromptText;
       try {
         var raw = await ai(sys, usr, 2000, false); // reduced to 2000 for speed — still enough for scoring
         if(!raw) return null;
