@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782932920 -->
+<!-- v1782933156 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1053,6 +1053,10 @@ async function generatePicks(strat) {
       : 'Attempt '+attempts+' — '+published+' published, '+declined+' declined';
   }
 
+  // Lock in generation number at batch start — prevents async drift if user interacts with UI
+  var lockedGenNumber = s.currentGen;
+  console.log('[Batch] Starting generation:', lockedGenNumber, 'for strategy:', strat);
+
   // Load universe, declined, and learned scoring weights
   var universe = await getUniverse();
   var declinedRes = await sbGet('declined_tickers', '?strategy_id=eq.'+strat+'&gen_number=eq.'+s.currentGen);
@@ -1172,7 +1176,7 @@ async function generatePicks(strat) {
         }
         pick.id=Date.now().toString()+Math.random().toString(36).slice(2,6);
         pick.strategy_id=strat;
-        pick.gen_number=s.currentGen;
+        pick.gen_number=lockedGenNumber; // use locked value, not s.currentGen which may drift
         pick.status='open';
         pick._ticker=ticker; // preserve for logging
         return pick;
@@ -1195,7 +1199,7 @@ async function generatePicks(strat) {
     declinedResults.forEach(function(p){
       declined++;
       s.declined.push(p._ticker||p.ticker);
-      sbPost('declined_tickers',{strategy_id:strat,gen_number:s.currentGen,ticker:p._ticker||p.ticker,reason:p.decline_reason||''}).catch(function(){});
+      sbPost('declined_tickers',{strategy_id:strat,gen_number:lockedGenNumber,ticker:p._ticker||p.ticker,reason:p.decline_reason||''}).catch(function(){});
       addLog('x Declined: '+(p._ticker||p.ticker)+' — '+(p.decline_reason||'').substring(0,60));
     });
 
