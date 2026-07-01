@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782933637 -->
+<!-- v1782933824 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1180,7 +1180,11 @@ async function generatePicks(strat) {
         pick.status='open';
         pick._ticker=ticker; // preserve for logging
         return pick;
-      } catch(e){ return null; }
+      } catch(e){
+        console.error('[DeepDive] '+ticker+' failed:', e.message, e);
+        addLog('x deepDive error '+ticker+': '+e.message);
+        return null;
+      }
     }
 
     // Fire deep dives in waves of 8 to avoid Anthropic rate limits
