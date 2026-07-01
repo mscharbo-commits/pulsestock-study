@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782930421 -->
+<!-- v1782930695 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -614,8 +614,8 @@ async function sbPatch(table, data, params) { return sb('PATCH', table, data, pa
 async function sbDelete(table, params) { return sb('DELETE', table, null, params); }
 
 // ── CLAUDE AI ──
-async function ai(sys, usr, tok, useSearch) {
-  var body = { model:'claude-sonnet-4-6', max_tokens:tok||2000, system:sys, messages:[{role:'user',content:usr}] };
+async function ai(sys, usr, tok, useSearch, model) {
+  var body = { model:model||'claude-sonnet-4-6', max_tokens:tok||2000, system:sys, messages:[{role:'user',content:usr}] };
   if (useSearch) body.use_search = true;
   var r = await fetch(CLAUDE_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   var d = await r.json();
@@ -946,14 +946,21 @@ async function fastPreScreen(strat, candidates, held, declinedList, regStr) {
     : 'strong fundamental + technical momentum alignment with the current market regime for a 10-60 day hold';
 
   function screenChunk(chunk) {
-    var sys = 'You are a fast stock screener. Rank tickers by conviction for this strategy. Respond ONLY with a JSON array, no markdown, no explanation per ticker -- just a ranked list.';
-    var usr = 'Strategy needs: '+strategyHint+'. Candidates: '+chunk.join(',')
-      +'. Return ONLY a JSON array of the tickers from this list worth a full deep dive, ordered best-to-worst, max 8 per chunk. Exclude anything obviously unsuitable (wrong sector fit, clearly weak setup, penny stock, illiquid). Format: ["TICK1","TICK2","TICK3"]';
-    return ai(sys, usr, 400, false).then(function(raw){
+    var sys = 'You are a stock screener. Given a list of tickers and a strategy, return the best candidates as a JSON array. Respond ONLY with a valid JSON array like ["AAPL","MSFT"]. No markdown, no explanation.';
+    var usr = 'Strategy: '+strategyHint+'. Today is '+new Date().toDateString()
+      +'. From this list pick the top 8 most suitable tickers (exclude penny stocks under $5, closed-end funds, illiquid names, and anything clearly unsuitable): '
+      +chunk.join(',')
+      +'. Respond with ONLY a JSON array of up to 8 ticker symbols.';
+    return ai(sys, usr, 300, false, 'claude-haiku-4-5-20251001').then(function(raw){
       try {
         var arr = pj(raw);
         return Array.isArray(arr) ? arr.filter(function(t){ return chunk.indexOf(t)>=0; }) : [];
-      } catch(e) { return []; }
+      } catch(e) {
+        // Try to extract tickers directly if JSON parse fails
+        var found = [];
+        chunk.forEach(function(t){ if(raw && raw.indexOf(t)>=0) found.push(t); });
+        return found.slice(0,8);
+      }
     }).catch(function(){ return []; });
   }
 
@@ -1073,9 +1080,12 @@ async function generatePicks(strat) {
     ? screenPool // catalyst pool is already small (earnings-confirmed) -- skip extra screening layer
     : await fastPreScreen(strat, screenPool.sort(function(){return Math.random()-.5;}).slice(0, 600), heldNow, s.declined, regStrForScreen);
 
-  if (!shortlist.length) {
-    shortlist = screenPool.sort(function(){return Math.random()-.5;}).slice(0,30);
-    addLog('⚠ Pre-screen returned no results — falling back to random sample of 30');
+  if (shortlist.length < 10) {
+    var randomFallback = screenPool.filter(function(t){
+      return heldNow.indexOf(t)<0 && s.declined.indexOf(t)<0;
+    }).sort(function(){return Math.random()-.5;}).slice(0,30);
+    shortlist = shortlist.concat(randomFallback);
+    if (shortlist.length < 15) addLog('⚠ Pre-screen returned few results ('+shortlist.length+') — augmented with random sample');
   }
   shortlist = shortlist.filter(function(t,i,a){ return a.indexOf(t)===i; }); // dedupe
   var screenElapsed = ((Date.now()-screenStartTime)/1000).toFixed(1);
