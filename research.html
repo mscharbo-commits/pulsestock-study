@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782907421 -->
+<!-- v1782930421 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -576,6 +576,7 @@ nav {
 <div id="toast"></div>
 
 <script>
+const RAILWAY_URL = 'https://pulsestock-backend-production.up.railway.app';
 const SUPABASE_URL = 'https://ttcprqkoibiztibhpsrp.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR0Y3BycWtvaWJpenRpYmhwc3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzNTk5NjcsImV4cCI6MjA5NTkzNTk2N30.kO-a0NYLQ0rrAV1V7Aj4O8Mwm7KFq2NPfIQl2uY5sDY';
 const CLAUDE_URL = 'https://pulsestock-study.vercel.app/api/claude';
@@ -642,35 +643,26 @@ async function fh(ep) {
     return r.ok ? await r.json() : null;
   } catch(e){ return null; }
 }
-var _inflightRequests = {};
-var _lastFetchTime = 0;
-var _fetchQueue = Promise.resolve();
-
+// Railway backend handles rate limiting — no browser-side queue needed
 async function getPrice(sym) {
   if (pcache[sym] && (Date.now()-pcache[sym].t)<60000) return pcache[sym].p;
-  // Dedupe: if a request for this symbol is already in flight, wait for it instead of firing a new one
-  if (_inflightRequests[sym]) return _inflightRequests[sym];
-
-  var promise = (async function() {
-    // Global rate limiter: enforce minimum 250ms between ANY Finnhub calls across the whole app
-    _fetchQueue = _fetchQueue.then(async function() {
-      var now = Date.now();
-      var wait = Math.max(0, 250 - (now - _lastFetchTime));
-      if (wait > 0) await new Promise(function(res){ setTimeout(res, wait); });
-      _lastFetchTime = Date.now();
-    });
-    await _fetchQueue;
-
+  try {
+    var r = await fetch(RAILWAY_URL+'/prices?tickers='+sym);
+    var d = await r.json();
+    var p = d[sym] && d[sym].c ? d[sym].c : null;
+    if (p) pcache[sym] = {p:p, t:Date.now()};
+    return p;
+  } catch(e) {
+    // Fallback to direct Finnhub if Railway is down
     var q = await fh('quote?symbol='+sym);
     var p = q&&q.c ? q.c : null;
     if (p) pcache[sym] = {p:p, t:Date.now()};
-    delete _inflightRequests[sym];
     return p;
-  })();
-
-  _inflightRequests[sym] = promise;
-  return promise;
+  }
 }
+
+// Keep fh() for other Finnhub calls (metrics, earnings calendar)
+// getPrice now goes through Railway
 
 // ── GATE ──
 document.getElementById('enterbtn').addEventListener('click', checkPassword);
@@ -924,7 +916,7 @@ async function getEarningsCalendar() {
   var fromStr = today.toISOString().split('T')[0];
   var toStr = end.toISOString().split('T')[0];
   try {
-    var r = await fetch('https://finnhub.io/api/v1/calendar/earnings?from='+fromStr+'&to='+toStr+'&token='+FHK);
+    var r = await fetch(RAILWAY_URL+'/earnings-calendar');
     var d = await r.json();
     var entries = d.earningsCalendar || [];
     // Build a map: ticker -> earnings date, deduped to nearest date per ticker
