@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782932452 -->
+<!-- v1782932592 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1215,9 +1215,8 @@ async function generatePicks(strat) {
     renderPicks(strat);
     btn.disabled=false;
     statusEl.textContent='Done — '+published+' published from '+candidates.length+' analyzed';
-    barEl.style.width='100%';
+    bar.style.width='100%';
     countEl.textContent=published+'/'+total;
-    updateBar();
     toast('✦ Done: '+published+' published (best by confidence from '+candidates.length+' analyzed)');
 
     var newPicks=await sbGet('study_picks','?strategy_id=eq.'+strat+'&declined=eq.false&order=date.desc');
