@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783046807 -->
+<!-- v1783047057 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1237,16 +1237,41 @@ async function generatePicks(strat) {
       pick.stop_loss = parseFloat((price*0.965).toFixed(2));
     }
 
-    pick.id = Date.now().toString();
-    pick.strategy_id = strat;
-    pick.gen_number = s.currentGen;
-    pick.status = 'open';
+    // Build clean DB record matching schema exactly
+    var genNum = s.currentGen;
+    var dbPick = {
+      id: ticker+'_'+genNum+'_'+Date.now(),
+      ticker: ticker,
+      strategy_id: strat,
+      gen_number: genNum,
+      status: 'open',
+      action: pick.action||'BUY',
+      entry_price: parseFloat(pick.entry_price)||null,
+      target_price: parseFloat(pick.target_price)||null,
+      stop_loss: parseFloat(pick.stop_loss)||null,
+      sector: pick.sector||'',
+      timeframe: pick.timeframe||'',
+      confidence: parseInt(pick.confidence)||0,
+      reasoning: pick.reasoning||'',
+      key_risk: pick.key_risk||'',
+      chain_of_thought: pick.chain_of_thought||'',
+      regime_context: pick.regime_context||'',
+      date: new Date().toISOString(),
+      declined: false
+    };
 
-    // Save to Supabase
-    await sbPost('study_picks', pick).catch(function(e){ addLog('x Save error: '+e.message); });
-    s.picks.unshift(pick);
-    published++;
-    addLog('+ '+ticker+' @ $'+(pick.entry_price?(+pick.entry_price).toFixed(2):'?')+' — '+pick.confidence+'% conf');
+    var saveResult = await sbPost('study_picks', dbPick).catch(function(e){
+      addLog('x Save error: '+e.message);
+      return null;
+    });
+
+    if (saveResult !== null) {
+      s.picks.unshift(dbPick);
+      published++;
+      addLog('+ '+ticker+' @ $'+(dbPick.entry_price?dbPick.entry_price.toFixed(2):'?')+' — '+dbPick.confidence+'% conf — saved ✓');
+    } else {
+      addLog('x '+ticker+' — save failed');
+    }
     renderPicks(strat);
     setTimeout(runNext, 2000);
   }
