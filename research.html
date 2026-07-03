@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783075138 -->
+<!-- v1783075179 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -744,7 +744,8 @@ function showPage(page) {
 async function renderStrategyPage(strat) {
   renderGenSelector(strat);
   renderPicks(strat);
-  await renderStats(strat); // await so P&L calc isn't interrupted by concurrent price fetches
+  await renderStats(strat);
+  loadAndDisplayRankedList(strat); // show ranked candidates from last scan
 }
 
 async function renderStats(strat) {
@@ -1401,6 +1402,44 @@ function renderStrategyCompare() {
     +'</div>';
 }
 
+
+
+// ── RANKED CANDIDATE LIST ──
+async function loadAndDisplayRankedList(strat) {
+  var el = document.getElementById(strat+'-ranked-list');
+  if (!el) return;
+  var today = new Date().toISOString().split('T')[0];
+  var yesterday = new Date(Date.now()-86400000).toISOString().split('T')[0];
+  var candidates = await sbGet('pre_screened_candidates',
+    '?strategy_id=eq.'+strat+'&trading_date=gte.'+yesterday+'&order=rank.asc&limit=100');
+
+  if (!candidates || !candidates.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text2);padding:8px 0">No scan data yet — run scan.js to populate candidates</div>';
+    return;
+  }
+
+  var colors = {momentum:'var(--accent1)', compounder:'var(--accent2)', catalyst:'var(--accent3)'};
+  var ac = colors[strat];
+  var held = state[strat].picks.map(function(p){ return p.ticker; });
+
+  el.innerHTML = '<div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">'
+    +'📊 '+candidates.length+' Ranked Candidates from Last Scan — Select top N to Deep Dive</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
+    +candidates.map(function(c, i){
+      var isHeld = held.indexOf(c.ticker) >= 0;
+      return '<div style="background:var(--card);border:1px solid '+(isHeld?ac:'var(--border)')+';border-radius:8px;padding:6px 10px;font-size:12px'+(isHeld?';opacity:.5':'')+'">'
+        +'<span style="font-family:DM Mono,monospace;font-weight:700;color:'+(isHeld?'var(--text2)':ac)+'">#'+(i+1)+' '+c.ticker+'</span>'
+        +' <span style="color:var(--text2)">'+c.screen_score+'</span>'
+        +(c.range_position?' <span style="color:var(--text3);font-size:10px">R:'+c.range_position+'%</span>':'')
+        +(c.rsi?' <span style="color:var(--text3);font-size:10px">RSI:'+c.rsi+'</span>':'')
+        +(isHeld?' <span style="color:var(--text3);font-size:10px">held</span>':'')
+        +'</div>';
+    }).join('')
+    +'</div>';
+
+  // Store for use by Deep Dive
+  state[strat]._rankedCandidates = candidates.map(function(c){ return c.ticker; });
+}
 
 // ── SECTION TOGGLE (Picks / Critic / Learning Loop) ──
 async function switchSection(strat, section) {
