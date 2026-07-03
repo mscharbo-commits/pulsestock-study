@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783046658 -->
+<!-- v1783046807 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -576,7 +576,6 @@ nav {
 <div id="toast"></div>
 
 <script>
-const RAILWAY_URL = 'https://pulsestock-backend-production.up.railway.app';
 const SUPABASE_URL = 'https://ttcprqkoibiztibhpsrp.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR0Y3BycWtvaWJpenRpYmhwc3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzNTk5NjcsImV4cCI6MjA5NTkzNTk2N30.kO-a0NYLQ0rrAV1V7Aj4O8Mwm7KFq2NPfIQl2uY5sDY';
 const CLAUDE_URL = 'https://pulsestock-study.vercel.app/api/claude';
@@ -614,8 +613,8 @@ async function sbPatch(table, data, params) { return sb('PATCH', table, data, pa
 async function sbDelete(table, params) { return sb('DELETE', table, null, params); }
 
 // ── CLAUDE AI ──
-async function ai(sys, usr, tok, useSearch, model) {
-  var body = { model:model||'claude-sonnet-4-6', max_tokens:tok||2000, system:sys, messages:[{role:'user',content:usr}] };
+async function ai(sys, usr, tok, useSearch) {
+  var body = { model:'claude-sonnet-4-6', max_tokens:tok||2000, system:sys, messages:[{role:'user',content:usr}] };
   if (useSearch) body.use_search = true;
   var r = await fetch(CLAUDE_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   var d = await r.json();
@@ -643,26 +642,35 @@ async function fh(ep) {
     return r.ok ? await r.json() : null;
   } catch(e){ return null; }
 }
-// Railway backend handles rate limiting — no browser-side queue needed
+var _inflightRequests = {};
+var _lastFetchTime = 0;
+var _fetchQueue = Promise.resolve();
+
 async function getPrice(sym) {
   if (pcache[sym] && (Date.now()-pcache[sym].t)<60000) return pcache[sym].p;
-  try {
-    var r = await fetch(RAILWAY_URL+'/prices?tickers='+sym);
-    var d = await r.json();
-    var p = d[sym] && d[sym].c ? d[sym].c : null;
-    if (p) pcache[sym] = {p:p, t:Date.now()};
-    return p;
-  } catch(e) {
-    // Fallback to direct Finnhub if Railway is down
+  // Dedupe: if a request for this symbol is already in flight, wait for it instead of firing a new one
+  if (_inflightRequests[sym]) return _inflightRequests[sym];
+
+  var promise = (async function() {
+    // Global rate limiter: enforce minimum 250ms between ANY Finnhub calls across the whole app
+    _fetchQueue = _fetchQueue.then(async function() {
+      var now = Date.now();
+      var wait = Math.max(0, 250 - (now - _lastFetchTime));
+      if (wait > 0) await new Promise(function(res){ setTimeout(res, wait); });
+      _lastFetchTime = Date.now();
+    });
+    await _fetchQueue;
+
     var q = await fh('quote?symbol='+sym);
     var p = q&&q.c ? q.c : null;
     if (p) pcache[sym] = {p:p, t:Date.now()};
+    delete _inflightRequests[sym];
     return p;
-  }
-}
+  })();
 
-// Keep fh() for other Finnhub calls (metrics, earnings calendar)
-// getPrice now goes through Railway
+  _inflightRequests[sym] = promise;
+  return promise;
+}
 
 // ── GATE ──
 document.getElementById('enterbtn').addEventListener('click', checkPassword);
@@ -916,7 +924,7 @@ async function getEarningsCalendar() {
   var fromStr = today.toISOString().split('T')[0];
   var toStr = end.toISOString().split('T')[0];
   try {
-    var r = await fetch(RAILWAY_URL+'/earnings-calendar');
+    var r = await fetch('https://finnhub.io/api/v1/calendar/earnings?from='+fromStr+'&to='+toStr+'&token='+FHK);
     var d = await r.json();
     var entries = d.earningsCalendar || [];
     // Build a map: ticker -> earnings date, deduped to nearest date per ticker
@@ -941,38 +949,26 @@ async function fastPreScreen(strat, candidates, held, declinedList, regStr) {
   var chunks = [];
   for (var i=0; i<pool.length; i+=CHUNK_SIZE) chunks.push(pool.slice(i, i+CHUNK_SIZE));
 
-  var strategyHint = strat==='catalyst' ? 'SHORT-TERM IN-AND-OUT TRADE: primary filter is TECHNICAL SETUP — stock must show fresh momentum (not already extended), price above VWAP, RSI in 40-70 range building not exhausted, and relative strength vs sector. Secondary filter is ANY near-term catalyst within 10 days (earnings, FDA, launch, split, analyst day) — use web knowledge of upcoming events. Exclude: extended stocks already up 20%+ in past month, downtrends, illiquid names under $5, SPACs, CEFs, ETFs'
+  var strategyHint = strat==='catalyst' ? 'a near-term dated catalyst (earnings, FDA, launch) plus fresh technical setup (VWAP/momentum, not already extended)'
     : strat==='compounder' ? 'durable competitive moat, strong free cash flow, reasonable valuation for a multi-year hold'
     : 'strong fundamental + technical momentum alignment with the current market regime for a 10-60 day hold';
 
   function screenChunk(chunk) {
-    var sys = 'You are a stock screener. Given a list of tickers and a strategy, return the best candidates as a JSON array. Respond ONLY with a valid JSON array like ["AAPL","MSFT"]. No markdown, no explanation.';
-    var usr = 'Strategy: '+strategyHint+'. Today is '+new Date().toDateString()
-      +'. From this list pick the top 8 most suitable tickers (exclude penny stocks under $5, closed-end funds, illiquid names, and anything clearly unsuitable): '
-      +chunk.join(',')
-      +'. Respond with ONLY a JSON array of up to 8 ticker symbols.';
-    return ai(sys, usr, 300, false, 'claude-haiku-4-5-20251001').then(function(raw){
+    var sys = 'You are a fast stock screener. Rank tickers by conviction for this strategy. Respond ONLY with a JSON array, no markdown, no explanation per ticker -- just a ranked list.';
+    var usr = 'Strategy needs: '+strategyHint+'. Candidates: '+chunk.join(',')
+      +'. Return ONLY a JSON array of the tickers from this list worth a full deep dive, ordered best-to-worst, max 8 per chunk. Exclude anything obviously unsuitable (wrong sector fit, clearly weak setup, penny stock, illiquid). Format: ["TICK1","TICK2","TICK3"]';
+    return ai(sys, usr, 400, false).then(function(raw){
       try {
         var arr = pj(raw);
         return Array.isArray(arr) ? arr.filter(function(t){ return chunk.indexOf(t)>=0; }) : [];
-      } catch(e) {
-        // Try to extract tickers directly if JSON parse fails
-        var found = [];
-        chunk.forEach(function(t){ if(raw && raw.indexOf(t)>=0) found.push(t); });
-        return found.slice(0,8);
-      }
+      } catch(e) { return []; }
     }).catch(function(){ return []; });
   }
 
   // Fire all chunks in parallel -- this is the speed win, not sequential one-by-one
-  console.log('[Screen] Firing '+chunks.length+' parallel Haiku chunks for '+pool.length+' candidates');
   var results = await Promise.all(chunks.map(screenChunk));
   var shortlist = [];
-  results.forEach(function(r, i){ 
-    console.log('[Screen] Chunk '+i+' returned '+r.length+' candidates: '+r.join(','));
-    shortlist = shortlist.concat(r); 
-  });
-  console.log('[Screen] Total shortlist: '+shortlist.length);
+  results.forEach(function(r){ shortlist = shortlist.concat(r); });
   return shortlist;
 }
 
@@ -1012,18 +1008,15 @@ var strategyConfigs = {
     }
   },
   catalyst: {
-    gate: 85,
+    gate: 90,
     holdDays: '3-10 days',
-    systemPrompt: 'You are Catalyst Swing AI — a short-term trader focused on stocks showing the best technical momentum setups for a quick 3-10 day in-and-out trade. SCORING PRIORITY ORDER: (1) TECHNICALS are the primary gate — VWAP positioning, RSI 40-70 building momentum, price structure (uptrend), relative strength vs sector. A stock failing technicals is ALWAYS declined. (2) CATALYST is a bonus — if a dated event exists within 10 days (earnings, FDA, launch, split, analyst day), it boosts the score significantly. If no hard catalyst exists but technicals are exceptional, the stock CAN still qualify. (3) NEWS/SENTIMENT — is the crowd building a position or already fully in? (4) FUNDAMENTALS — context only for a 3-10 day hold. NEVER decline a stock solely because no earnings date exists within 10 days. The technical setup is the catalyst. Confidence gate: 85%. MANDATORY GRANULAR WEIGHTED SCORING -- NOT a bucket lookup and NOT a forced sum to 100. Score every individual sub-criterion below independently on its OWN 0-100 scale based on specific evidence for THIS stock (precise numbers like 67, 84, 23, 91 -- never round defaults like 70/80/90). FUNDAMENTALS sub-scores (0-100 each): revenue_growth_score, margin_trend_score, balance_sheet_score, valuation_score (expensive relative to growth scores LOW). TECHNICAL sub-scores (0-100 each): structure_score (HH/HL via 52W range position), relative_strength_score (vs sector and SPY), vwap_score, momentum_score (RSI zone fit and MACD/structure alignment, not raw RSI level). SECTOR sub-scores (0-100 each): sector_trend_score, rotation_phase_score, competitive_position_score. NEWS/CATALYST sub-scores (0-100 each): catalyst_proximity_score (0-100 based on how close and confirmed any catalyst is -- score 50 if no hard catalyst but news flow is positive, score 0 only if no news at all), sentiment_score (web_search if needed), estimate_revision_score (neutral 50 if unknown). Calculate each CATEGORY score as the average of its sub-scores. Then weight the four category scores: Technical 35%, News 30%, Fundamentals 20%, Sector 15% -- these are the defaults for short-term trades, adjust per stock with justification. Final confidence = weighted average, calculated precisely, never rounded to common numbers. Show full work in chain_of_thought. If your final weighted score falls below 85, set declined:true. Respond ONLY in valid JSON.',
+    systemPrompt: 'You are Catalyst Swing AI — a true in-and-out trader, not a swing holder. You enter just ahead of a confirmed dated catalyst and exit within 1-2 days of the event resolving, regardless of outcome. Total round-trip is 3-10 days maximum. This is NOT a medium-term position -- if the setup requires holding through multiple weeks before the catalyst even occurs, it does not qualify for this strategy. Confidence gate: 90% (higher bar because you need a specific, near-term catalyst). MANDATORY GRANULAR WEIGHTED SCORING -- NOT a bucket lookup and NOT a forced sum to 100. Score every individual sub-criterion below independently on its OWN 0-100 scale based on specific evidence for THIS stock (precise numbers like 67, 84, 23, 91 -- never round defaults like 70/80/90). FUNDAMENTALS sub-scores (0-100 each): revenue_growth_score, margin_trend_score, balance_sheet_score, valuation_score (expensive relative to growth scores LOW). TECHNICAL sub-scores (0-100 each): structure_score (HH/HL via 52W range position), relative_strength_score (vs sector and SPY), vwap_score, momentum_score (RSI zone fit and MACD/structure alignment, not raw RSI level). SECTOR sub-scores (0-100 each): sector_trend_score, rotation_phase_score, competitive_position_score. NEWS/CATALYST sub-scores (0-100 each): catalyst_proximity_score (0 if none exists), sentiment_score (web_search if needed), estimate_revision_score (neutral 50 if unknown). Calculate each CATEGORY score as the average of its sub-scores. Then weight the four category scores using YOUR OWN judgment of what matters most for THIS stock and THIS strategy -- weights need not be equal. State your chosen weights explicitly with justification. The FINAL confidence score is the weighted average of the four category scores using your stated weights, calculated precisely, never rounded to 80/85/90/95. Show full work in chain_of_thought: every sub-score, category averages, chosen weights with justification, and final calculation. Example: \"Fundamentals: rev_growth=72 margin=68 balance_sheet=81 valuation=45 -> avg=66.5. Technical: structure=78 rel_strength=70 vwap=82 momentum=75 -> avg=76.25. Sector: trend=80 rotation=65 competitive=70 -> avg=71.7. News: catalyst=20 sentiment=55 revisions=50 -> avg=41.7. Weights: Fundamentals 35%, Technical 25%, Sector 25%, News 15%. Final = 66.5*.35 + 76.25*.25 + 71.7*.25 + 41.7*.15 = 67.8\". No two stocks in a batch should land on similar final scores unless their sub-scores are genuinely similar. If your final weighted score falls below 90, set declined:true. For this strategy you will typically justify weighting News/Catalyst heaviest since the trade thesis depends on a dated event. CRITICAL: Every pick MUST have a specific dated catalyst within the next 10 calendar days. Valid catalysts include but are not limited to: earnings releases, FDA/regulatory decisions, product launches, major contract announcements, confirmed stock splits with effective date, investor/analyst days, confirmed conference presentations, index inclusion dates, and M&A/spinoff completion dates. This is an in-and-out trade: enter 1-5 days before the event, exit 1-2 days after it resolves, never hold longer than 10 days total. If genuinely no qualifying catalyst of any type exists within 10 days, decline and do not force a trade -- a forced trade without a real catalyst is a losing trade. It is completely acceptable and expected for most batches to publish zero picks if the universe genuinely lacks near-term catalysts. Technical setup must confirm the crowd is not yet fully positioned. News sentiment must show the catalyst is not priced in. Fundamentals are the foundation that makes the catalyst meaningful. Respond ONLY in valid JSON.',
     pickPrompt: function(ticker, regStr, rulesStr, techCtx) {
       return 'Today: '+new Date().toDateString()+'. '+regStr+' '+rulesStr+' '+techCtx
-        +' Deep dive on '+ticker+' for Catalyst Swing strategy -- 3-10 day in-and-out trade.'
-        +' STEP 1 — TECHNICALS (primary gate): Is price above VWAP? RSI 40-70 and building? Structure intact? Relative strength positive vs sector? If technicals fail, decline immediately.'
-        +' STEP 2 — CATALYST (bonus): Any confirmed event within 10 days? If yes, great — score catalyst_proximity high (80-95). If no hard event but news flow is positive, score catalyst_proximity 40-60 and proceed.'
-        +' STEP 3 — SENTIMENT: Is the crowd early or already fully positioned?'
-        +' STEP 4 — Score all sub-criteria, calculate weighted score, publish if above 85.'
-        +' EXIT RULE: exit when momentum breaks (close below VWAP, RSI drops below 40) OR 1-2 days after any catalyst resolves.'
-        +' Return JSON: {"ticker":"'+ticker+'","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"","timeframe":"catalyst-driven-3-10-days","catalyst_date":"YYYY-MM-DD or null","catalyst_type":"earnings|fda|launch|split|technical_breakout|none","confidence":0,"declined":false,"decline_reason":null,"reasoning":"100-150 words on technical setup + any catalyst","key_risk":"1-2 sentences","chain_of_thought":"300-400 words: technical analysis, catalyst check, full sub-score breakdown, category averages, chosen weights, final calculation","regime_context":"'+regStr.substring(0,50)+'","date":"'+new Date().toISOString()+'"}';
+        +' Deep dive on '+ticker+' for Catalyst Swing strategy -- a true in-and-out trade. Entry occurs 1-5 days before the catalyst; exit occurs within 1-2 days after the catalyst resolves. Total hold is 3-10 days.'
+        +' REQUIRED: Identify the specific dated catalyst occurring within the next 10 calendar days. Valid catalyst types include: earnings releases, FDA/regulatory decisions, product launches, major contract announcements, confirmed stock splits with an effective date, investor day or analyst day events, confirmed conference presentations with new guidance expected, index inclusion effective dates, and confirmed M&A/spinoff completion dates. If a stock has ANY of these confirmed within 10 days, it qualifies -- do not restrict to earnings alone. If genuinely no such event exists within 10 days, decline.'
+        +' Assess: is the catalyst priced in already (check recent run-up and IV if knowable)? Are technicals showing fresh accumulation right before the event (VWAP and momentum positioning especially), not a stock that already made its move? What does news sentiment show -- is the crowd still building a position or already fully in?'
+        +' Return JSON: {"ticker":"'+ticker+'","action":"BUY","entry_price":0,"target_price":0,"stop_loss":0,"sector":"","timeframe":"catalyst-driven-3-10-days","catalyst_date":"YYYY-MM-DD","catalyst_type":"earnings|fda|launch|contract|other","confidence":0,"declined":false,"decline_reason":null,"reasoning":"100-150 words focused on catalyst + technical setup","key_risk":"1-2 sentences","chain_of_thought":"400-500 words: catalyst verification, technical setup (are sheep positioned?), news sentiment, full sub-score breakdown, category averages, chosen weights with justification, final calculation, risk/reward","regime_context":"'+regStr.substring(0,50)+'","date":"'+new Date().toISOString()+'"}';
     }
   }
 };
@@ -1053,10 +1046,6 @@ async function generatePicks(strat) {
       : 'Attempt '+attempts+' — '+published+' published, '+declined+' declined';
   }
 
-  // Lock in generation number at batch start — prevents async drift if user interacts with UI
-  var lockedGenNumber = s.currentGen;
-  console.log('[Batch] Starting generation:', lockedGenNumber, 'for strategy:', strat);
-
   // Load universe, declined, and learned scoring weights
   var universe = await getUniverse();
   var declinedRes = await sbGet('declined_tickers', '?strategy_id=eq.'+strat+'&gen_number=eq.'+s.currentGen);
@@ -1064,221 +1053,205 @@ async function generatePicks(strat) {
   var weights = await getWeights(strat);
   var weightsPromptText = formatWeightsForPrompt(weights);
 
-  // Catalyst Swing: earnings calendar is ONE signal, not the universe gate
-  // Use full universe so non-earnings catalysts (FDA, splits, launches, analyst days) are not excluded
+  // Catalyst Swing: pre-filter universe to ONLY tickers with confirmed earnings in next 10 days
+  // This replaces blind random search with an instant, accurate calendar-based screen
   var catalystCandidates = null;
   var earningsMap = {};
   if (strat === 'catalyst') {
-    // Fetch earnings calendar to ENRICH the prompt with known dates, not to restrict the universe
-    try {
-      earningsMap = await getEarningsCalendar();
-      addLog('Earnings calendar loaded: '+Object.keys(earningsMap).length+' confirmed earnings in next 10 days (used as enrichment signal, not a gate)');
-    } catch(e) { earningsMap = {}; }
-    // catalystCandidates stays null — use full universe so all catalyst types are eligible
+    addLog('Fetching earnings calendar for next 10 days...');
+    earningsMap = await getEarningsCalendar();
+    var tickersWithEarnings = Object.keys(earningsMap).filter(function(t){ return universe.indexOf(t) >= 0; });
+    catalystCandidates = tickersWithEarnings;
+    addLog('Earnings calendar: '+Object.keys(earningsMap).length+' companies reporting in window, '+tickersWithEarnings.length+' overlap with our universe');
+    if (!tickersWithEarnings.length) {
+      addLog('x No earnings-driven candidates found in the next 10 days for this universe');
+    }
   }
 
   addLog('Loaded universe: '+universe.length+' tickers | Declined this gen: '+s.declined.length+' | Scoring weights: '+weights.length+' calibrated values');
 
   // FAST PRE-SCREEN: rank candidates in parallel BEFORE doing any expensive deep dives
-  // All strategies use full universe — pre-screen finds best fits regardless of catalyst type
-  var screenPool = universe;
+  var screenPool = (strat === 'catalyst' && catalystCandidates) ? catalystCandidates : universe;
   var heldNow = s.picks.map(function(p){ return p.ticker; });
   var screenSampleSize = Math.min(600, screenPool.length);
   statusEl.textContent = 'Pre-screening '+screenSampleSize+' candidates in parallel...';
   addLog('🔍 Pre-screening '+screenSampleSize+' candidates from a pool of '+screenPool.length+' (this runs ~15 parallel calls, takes 10-20 seconds)...');
   var screenStartTime = Date.now();
   var regStrForScreen = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
-  // All strategies go through fastPreScreen — Catalyst uses its own hint to find catalyst names
-  var screenSample = screenPool.sort(function(){return Math.random()-.5;}).slice(0, 600);
-  var shortlist = await fastPreScreen(strat, screenSample, heldNow, s.declined, regStrForScreen);
+  var shortlist = strat === 'catalyst'
+    ? screenPool // catalyst pool is already small (earnings-confirmed) -- skip extra screening layer
+    : await fastPreScreen(strat, screenPool.sort(function(){return Math.random()-.5;}).slice(0, 600), heldNow, s.declined, regStrForScreen);
 
-  if (shortlist.length < 10) {
-    var randomFallback = screenPool.filter(function(t){
-      return heldNow.indexOf(t)<0 && s.declined.indexOf(t)<0;
-    }).sort(function(){return Math.random()-.5;}).slice(0,30);
-    shortlist = shortlist.concat(randomFallback);
-    if (shortlist.length < 15) addLog('⚠ Pre-screen returned few results ('+shortlist.length+') — augmented with random sample');
+  if (!shortlist.length) {
+    shortlist = screenPool.sort(function(){return Math.random()-.5;}).slice(0,30);
+    addLog('⚠ Pre-screen returned no results — falling back to random sample of 30');
   }
   shortlist = shortlist.filter(function(t,i,a){ return a.indexOf(t)===i; }); // dedupe
   var screenElapsed = ((Date.now()-screenStartTime)/1000).toFixed(1);
   addLog('✓ Pre-screen complete in '+screenElapsed+'s: '+shortlist.length+' shortlisted candidates ready for deep dive');
   addLog('Shortlist: '+shortlist.slice(0,20).join(', ')+(shortlist.length>20?' ...+'+(shortlist.length-20)+' more':''));
 
-  // PARALLEL DEEP DIVE: take top candidates from shortlist, fire all at once
-  async function runParallelDeepDives() {
-    var held = s.picks.map(function(p){ return p.ticker; });
-    // Cap at 4x requested picks to avoid burning credits on unnecessary calls
-    // e.g. for 1 pick: analyze 8 candidates. For 5 picks: analyze 20 candidates.
-    var maxCandidates = Math.max(total * 4, 8);
-    var candidates = shortlist.filter(function(t){
-      return held.indexOf(t)<0 && s.declined.indexOf(t)<0;
-    }).slice(0, maxCandidates);
-
-    if (!candidates.length) {
+  async function runNext() {
+    if (published>=total || attempts>=maxAttempts) {
       btn.disabled = false;
-      addLog('x No candidates remaining in shortlist');
-      toast('Done: '+published+' published — shortlist exhausted');
+      toast('Done: '+published+' published, '+declined+' declined ('+attempts+' attempts)');
+      // Reload picks AND declined list fresh from Supabase
       var newPicks = await sbGet('study_picks', '?strategy_id=eq.'+strat+'&declined=eq.false&order=date.desc');
       s.picks = newPicks||[];
+      var freshDeclined = await sbGet('declined_tickers', '?strategy_id=eq.'+strat+'&gen_number=eq.'+s.currentGen);
+      s.declined = (freshDeclined||[]).map(function(d){ return d.ticker; });
       renderStrategyPage(strat);
       return;
     }
+    attempts++;
+    updateBar();
 
-    addLog('🚀 Running '+candidates.length+' deep dives in parallel across full shortlist...');
-    statusEl.textContent = 'Deep diving all '+candidates.length+' candidates simultaneously...';
-    var regStr = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
-    var rulesStr = s.rules.length ? 'RULES (apply all): '+s.rules.slice(0,10).join(' | ') : 'No learned rules yet.';
+    // Held tickers
+    var held = s.picks.map(function(p){ return p.ticker; });
 
-    async function deepDiveOne(ticker) {
-      var price = await getPrice(ticker);
-      var metric = await fh('stock/metric?symbol='+ticker+'&metric=all');
-      var mt = metric&&metric.metric ? metric.metric : {};
-      var w52h=mt['52WeekHigh']?parseFloat(mt['52WeekHigh']):null;
-      var w52l=mt['52WeekLow']?parseFloat(mt['52WeekLow']):null;
-      var rsi=mt['rsi14d']?parseFloat(mt['rsi14d']).toFixed(1):null;
-      var beta=mt['beta']?parseFloat(mt['beta']).toFixed(2):null;
-      var rangePos=null;
-      if(w52h&&w52l&&w52h>w52l&&price){
-        var rp=(price-w52l)/(w52h-w52l)*100;
-        rangePos=rp>=0&&rp<=200?rp.toFixed(0):null;
-      }
-      var structureSignal = rangePos?(parseFloat(rangePos)>=65?'UPTREND':parseFloat(rangePos)<=35?'DOWNTREND':'RANGE-BOUND'):'unknown';
-      var techCtx = 'TECHNICALS:'+(price?' Price=$'+price.toFixed(2):' no price')+
-        (w52h?' 52WH=$'+w52h.toFixed(2):'')+
-        (w52l?' 52WL=$'+w52l.toFixed(2):'')+
-        (rangePos?' RangePos='+rangePos+'% ('+structureSignal+')':'')+
-        (rsi?' RSI='+rsi:'')+
-        (beta?' Beta='+beta:'')+
-        (price&&w52h?' VWAP_est=$'+((price*0.985)).toFixed(2):'');
-      if(!price&&!w52h) techCtx='No technical data available.';
-
-      var sys = cfg.systemPrompt;
-      var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '\n\n' + weightsPromptText;
-      try {
-        var raw = await ai(sys, usr, 3000, false);
-        if(!raw) return null;
-        var pick = pj(raw);
-        if(!pick||!pick.ticker) return null;
-        if(pick.confidence!==undefined&&pick.confidence<=1) pick.confidence=Math.round(pick.confidence*100);
-        if(!pick.declined&&(pick.confidence||0)<cfg.gate){
-          pick.declined=true;
-          pick.decline_reason='Confidence '+(pick.confidence||0)+'% below '+cfg.gate+'% gate';
-        }
-        if(price&&pick.entry_price){
-          var ratio=price/pick.entry_price;
-          if(ratio>0.5&&ratio<2){
-            pick.target_price=parseFloat((price*(pick.target_price/pick.entry_price)).toFixed(2));
-            pick.stop_loss=parseFloat((price*(pick.stop_loss/pick.entry_price)).toFixed(2));
-            pick.entry_price=price;
-          }
-        } else if(price){
-          pick.entry_price=price;
-          pick.target_price=parseFloat((price*1.08).toFixed(2));
-          pick.stop_loss=parseFloat((price*0.965).toFixed(2));
-        }
-        pick.id=Date.now().toString()+Math.random().toString(36).slice(2,6);
-        pick.strategy_id=strat;
-        pick.gen_number=lockedGenNumber; // use locked value, not s.currentGen which may drift
-        pick.status='open';
-        pick._ticker=ticker; // preserve for logging
-        return pick;
-      } catch(e){
-        console.error('[DeepDive] '+ticker+' failed:', e.message, e);
-        addLog('x deepDive error '+ticker+': '+e.message);
-        return null;
-      }
-    }
-
-    // Fire deep dives in waves of 8 to avoid Anthropic rate limits
-    // 8 concurrent is fast but won't overwhelm the API
-    var WAVE_SIZE = 4; // smaller waves for reliability
-    var startTime = Date.now();
-    var results = [];
-    for (var wi = 0; wi < candidates.length; wi += WAVE_SIZE) {
-      var wave = candidates.slice(wi, wi + WAVE_SIZE);
-      statusEl.textContent = 'Deep diving wave '+(Math.floor(wi/WAVE_SIZE)+1)+'/'+Math.ceil(candidates.length/WAVE_SIZE)+' ('+wave.length+' picks)...';
-      var waveResults = await Promise.all(wave.map(deepDiveOne));
-      results = results.concat(waveResults);
-      var wavePass = waveResults.filter(function(r){ return r && !r.declined; }).length;
-      addLog('Wave '+(Math.floor(wi/WAVE_SIZE)+1)+': '+wavePass+' passed, '+(waveResults.length-wavePass)+' declined/failed');
-      if (wi + WAVE_SIZE < candidates.length) await new Promise(function(r){ setTimeout(r, 1000); });
-    }
-    var elapsed = ((Date.now()-startTime)/1000).toFixed(1);
-
-    // Sort passing picks by confidence score descending — best picks first
-    var passing = results.filter(function(p){ return p && !p.declined; });
-    var declinedResults = results.filter(function(p){ return p && p.declined; });
-    passing.sort(function(a,b){ return (b.confidence||0)-(a.confidence||0); });
-
-    addLog('✓ Deep dive complete in '+elapsed+'s: '+passing.length+' passed gate, '+declinedResults.length+' declined, '+(results.filter(function(r){return !r;}).length)+' failed');
-
-    // Log declines
-    declinedResults.forEach(function(p){
-      declined++;
-      s.declined.push(p._ticker||p.ticker);
-      sbPost('declined_tickers',{strategy_id:strat,gen_number:lockedGenNumber,ticker:p._ticker||p.ticker,reason:p.decline_reason||''}).catch(function(){});
-      addLog('x Declined: '+(p._ticker||p.ticker)+' — '+(p.decline_reason||'').substring(0,60));
+    // Use the pre-screened shortlist instead of blind random sampling -- already ranked by conviction
+    var available = shortlist.filter(function(t){
+      return held.indexOf(t)<0 && s.declined.indexOf(t)<0;
     });
 
-    // Save top N passing picks (up to what was requested)
-    var toPublish = passing.slice(0, total);
-    for(var i=0; i<toPublish.length; i++){
-      var pick = toPublish[i];
-      var tickerLabel = pick._ticker || pick.ticker;
-      // Strip internal/temp fields before DB save — explicit field list matching schema exactly
-      var dbPick = {
-        id: tickerLabel + '_' + lockedGenNumber + '_' + Date.now(),
-        ticker: tickerLabel,
-        strategy_id: strat,
-        gen_number: lockedGenNumber,
-        status: 'open',
-        action: pick.action || 'BUY',
-        entry_price: parseFloat(pick.entry_price) || null,
-        target_price: parseFloat(pick.target_price) || null,
-        stop_loss: parseFloat(pick.stop_loss) || null,
-        sector: pick.sector || '',
-        timeframe: pick.timeframe || '',
-        confidence: parseInt(pick.confidence) || 0,
-        reasoning: pick.reasoning || '',
-        key_risk: pick.key_risk || '',
-        chain_of_thought: pick.chain_of_thought || '',
-        regime_context: pick.regime_context || '',
-        date: new Date().toISOString(),
-        declined: false
-      };
-      var saveResult = await sbPost('study_picks', dbPick).catch(function(e){
-        addLog('x Save error for '+tickerLabel+': '+e.message);
-        return null;
-      });
-      // sbPost returns array on success, null on catch
-      var saved = saveResult !== null && saveResult !== undefined;
-      if(saved) {
-        dbPick.id = (Array.isArray(saveResult) && saveResult[0]) ? saveResult[0].id : dbPick.id;
-        s.picks.unshift(dbPick);
-        published++;
-        addLog('+ '+tickerLabel+' @ $'+(dbPick.entry_price?dbPick.entry_price.toFixed(2):'?')+' — '+pick.confidence+'% conf — SAVED ✓');
-      } else {
-        addLog('x '+tickerLabel+' — save returned null, skipping');
+    if (available.length === 0) {
+      addLog('x No shortlisted candidates remain (all held/declined) — stopping batch');
+      attempts = maxAttempts;
+      setTimeout(runNext, 100);
+      return;
+    }
+
+    var sample = available.slice(0, 30); // already ranked, take top of what remains
+
+    // Get current regime and rules
+    var regStr = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
+    var rulesStr = s.rules.length ? 'RULES (apply all): '+s.rules.slice(0,8).join(' | ') : 'No learned rules yet.';
+    var heldStr = held.length ? 'BLACKLIST (already held — do NOT pick): '+held.join(',') : '';
+    var catalystDateStr = '';
+    if (strat === 'catalyst' && sample.length) {
+      catalystDateStr = ' EARNINGS DATES for these candidates: ' + sample.map(function(t){ return t+'='+(earningsMap[t]||'?'); }).join(',') + '.';
+    }
+    var univStr = sample.length ? 'Pick from this list only (these are PRE-CONFIRMED to have a catalyst in the window): '+sample.join(',') : '';
+
+    // Step 1: Nomination
+    var nomSys = 'You are a stock picking AI. Respond ONLY with raw JSON, no markdown.';
+    var nomUsr = 'Today: '+new Date().toDateString()+'. '+heldStr+' '+univStr+(strat==='catalyst'?catalystDateStr:'')+' '+regStr
+      +' Nominate ONE stock with highest conviction for '+strat+' strategy. JSON only: {"ticker":"SYMBOL","reason":"one sentence"}';
+
+    var nomRaw = await ai(nomSys, nomUsr, 300, true).catch(function(){ return null; });
+    if (!nomRaw) { addLog('x Nomination failed'); setTimeout(runNext,500); return; }
+
+    var nom;
+    try { nom = pj(nomRaw); } catch(e) {
+      var m = nomRaw.match(/"ticker"\s*:\s*"([A-Z]{1,5})"/);
+      nom = m ? {ticker:m[1],reason:''} : null;
+    }
+    if (!nom||!nom.ticker) { addLog('x Parse error'); setTimeout(runNext,500); return; }
+
+    var ticker = nom.ticker.toUpperCase().replace(/[^A-Z]/g,'');
+    if (!ticker||ticker.length<1||ticker.length>5) { addLog('x Invalid ticker'); setTimeout(runNext,500); return; }
+    if (held.indexOf(ticker)>=0) { addLog('x '+ticker+' already held'); setTimeout(runNext,300); return; }
+    if (s.declined.indexOf(ticker)>=0) { addLog('x '+ticker+' previously declined'); setTimeout(runNext,300); return; }
+
+    addLog('→ '+ticker+': '+(nom.reason||'').substring(0,70));
+
+    // Step 2: Price
+    var price = await getPrice(ticker);
+    if (price) addLog('→ Price: $'+price.toFixed(2));
+
+    // Step 3: Technicals — structure, relative strength, VWAP estimate, ATR
+    var metric = await fh('stock/metric?symbol='+ticker+'&metric=all');
+    var mt = metric&&metric.metric ? metric.metric : {};
+    var w52h=mt['52WeekHigh']?parseFloat(mt['52WeekHigh']):null;
+    var w52l=mt['52WeekLow']?parseFloat(mt['52WeekLow']):null;
+    var rsi=mt['rsi14d']?parseFloat(mt['rsi14d']).toFixed(1):null;
+    var beta=mt['beta']?parseFloat(mt['beta']).toFixed(2):null;
+    var rangePos=null;
+    if(w52h&&w52l&&w52h>w52l&&price){
+      var rp=(price-w52l)/(w52h-w52l)*100;
+      rangePos=rp>=0&&rp<=200?rp.toFixed(0):null;
+    }
+    // Structure inference: top 65%+ of range = uptrend structure intact, bottom 35% = downtrend
+    var structureSignal = rangePos ? (parseFloat(rangePos)>=65?'UPTREND — HH/HL structure likely intact':parseFloat(rangePos)<=35?'DOWNTREND — structure broken, avoid':'RANGE-BOUND — no clear structure') : 'unknown';
+    // VWAP estimate: use 10-day average price as a daily-bar proxy for VWAP (true intraday VWAP requires real-time feed)
+    var quote10d = await fh('quote?symbol='+ticker);
+    var prevClose = quote10d&&quote10d.pc ? quote10d.pc : price;
+    var vwapEstimate = prevClose; // proxy until intraday feed is available
+    var vwapBias = price&&vwapEstimate ? (price>vwapEstimate?'ABOVE estimated VWAP — bullish bias':'BELOW estimated VWAP — bearish bias') : 'unknown';
+    // ATR estimate from day range as proxy (true 14-day ATR requires candle history)
+    var dayRange = quote10d&&quote10d.h&&quote10d.l ? (quote10d.h-quote10d.l) : null;
+    var atrEstimate = dayRange ? dayRange*1.8 : (price?price*0.02:null); // rough multiplier proxy
+    var atrStop = atrEstimate&&price ? (price-atrEstimate*1.5).toFixed(2) : null;
+    var atrTarget = atrEstimate&&price ? (price+atrEstimate*2.5).toFixed(2) : null;
+
+    var techCtx = price||w52h ? 'TECHNICALS (apply hierarchy: structure > relative strength > VWAP > ATR > RSI/MACD confirmation):'
+      +(price?' Price=$'+price.toFixed(2):'')
+      +(structureSignal!=='unknown'?' STRUCTURE='+structureSignal:'')
+      +(rangePos?' 52W-RangePos='+rangePos+'%':'')
+      +(vwapBias!=='unknown'?' VWAP_BIAS='+vwapBias+' (est. VWAP ~$'+vwapEstimate.toFixed(2)+')':'')
+      +(atrStop?' ATR-based Stop=$'+atrStop+' Target=$'+atrTarget:'')
+      +(rsi?' RSI='+rsi+' (use 40-80 band in uptrend, 20-60 in downtrend — NOT classic 70/30)':'')
+      +(beta?' Beta='+beta:'')
+      +' NOTE: VWAP and ATR are daily-bar proxies pending intraday data feed — treat as directional guidance not precise institutional VWAP.'
+      : 'No technical data — use web_search for current price, structure, and relative strength vs sector.';
+
+    // Step 4: Deep dive
+    var sys = cfg.systemPrompt;
+    var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '\n\n' + weightsPromptText;
+
+    var raw = await ai(sys, usr, 3500, false).catch(function(e){ return null; });
+    if (!raw) { addLog('x Deep dive failed'); setTimeout(runNext,1000); return; }
+
+    var pick;
+    try { pick = pj(raw); } catch(e) { addLog('x Parse error on deep dive'); setTimeout(runNext,1000); return; }
+
+    if (pick.confidence!==undefined&&pick.confidence<=1) pick.confidence=Math.round(pick.confidence*100);
+
+    // Enforce confidence gate
+    if (!pick.declined && (pick.confidence||0) < cfg.gate) {
+      pick.declined = true;
+      pick.decline_reason = 'Confidence '+(pick.confidence||0)+'% below '+cfg.gate+'% gate';
+    }
+
+    if (pick.declined) {
+      declined++;
+      addLog('x Declined: '+(pick.decline_reason||'').substring(0,70));
+      // Save to declined list
+      s.declined.push(ticker);
+      await sbPost('declined_tickers', {strategy_id:strat, gen_number:s.currentGen, ticker:ticker, reason:pick.decline_reason||''}).catch(function(){});
+      setTimeout(runNext, 1500);
+      return;
+    }
+
+    // Apply live price
+    if (price && pick.entry_price) {
+      var ratio = price / pick.entry_price;
+      if (ratio > 0.5 && ratio < 2) {
+        pick.target_price = parseFloat((price * (pick.target_price/pick.entry_price)).toFixed(2));
+        pick.stop_loss = parseFloat((price * (pick.stop_loss/pick.entry_price)).toFixed(2));
+        pick.entry_price = price;
       }
+    } else if (price) {
+      pick.entry_price = price;
+      pick.target_price = parseFloat((price*1.08).toFixed(2));
+      pick.stop_loss = parseFloat((price*0.965).toFixed(2));
     }
 
-    if(passing.length > total) {
-      addLog('ℹ '+(passing.length-total)+' additional picks also passed the gate but not published (requested '+total+' only)');
-    }
+    pick.id = Date.now().toString();
+    pick.strategy_id = strat;
+    pick.gen_number = s.currentGen;
+    pick.status = 'open';
 
+    // Save to Supabase
+    await sbPost('study_picks', pick).catch(function(e){ addLog('x Save error: '+e.message); });
+    s.picks.unshift(pick);
+    published++;
+    addLog('+ '+ticker+' @ $'+(pick.entry_price?(+pick.entry_price).toFixed(2):'?')+' — '+pick.confidence+'% conf');
     renderPicks(strat);
-    btn.disabled=false;
-    statusEl.textContent='Done — '+published+' published from '+candidates.length+' analyzed';
-    bar.style.width='100%';
-    countEl.textContent=published+'/'+total;
-    toast('✦ Done: '+published+' published (best by confidence from '+candidates.length+' analyzed)');
-
-    var newPicks=await sbGet('study_picks','?strategy_id=eq.'+strat+'&declined=eq.false&order=date.desc');
-    s.picks=newPicks||[];
-    renderStrategyPage(strat);
+    setTimeout(runNext, 2000);
   }
 
-  runParallelDeepDives();
+  runNext();
 }
 
 // ── CREATE GENERATION ──
