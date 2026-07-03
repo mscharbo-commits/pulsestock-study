@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783074457 -->
+<!-- v1783075138 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -375,25 +375,26 @@ nav {
     </div>
     <div class="generator">
       <div class="generator-header">
-        <div class="generator-title">Generate Picks — Learning AI</div>
+        <div class="generator-title">Ranked Candidates — Updated Daily</div>
         <div class="gen-controls">
           <select class="pick-count-sel" id="momentum-count">
-            <option value="1">1 pick</option>
-            <option value="3">3 picks</option>
-            <option value="5" selected>5 picks</option>
-            <option value="10">10 picks</option>
+            <option value="5">Deep dive top 5</option>
+            <option value="10" selected>Deep dive top 10</option>
+            <option value="15">Deep dive top 15</option>
+            <option value="20">Deep dive top 20</option>
           </select>
-          <button class="generate-btn momentum" id="momentum-genbtn" onclick="generatePicks('momentum')">✦ Generate</button>
-          <button class="monitor-btn" onclick="checkStops('momentum')">🔍 Check Stops/Targets</button>
+          <button class="generate-btn momentum" id="momentum-genbtn" onclick="generatePicks('momentum')">🔬 Deep Dive</button>
+          <button class="monitor-btn" onclick="checkStops('momentum')">🔍 Check Stops</button>
           <button class="monitor-btn" id="momentum-auto-btn" onclick="toggleAutoMonitor('momentum')">▶ Auto-Monitor: OFF</button>
         </div>
       </div>
       <div class="progress-wrap" id="momentum-progress">
         <div class="progress-track"><div class="progress-fill fill-momentum" id="momentum-bar"></div></div>
-        <div class="progress-meta"><span id="momentum-status">Starting…</span><span id="momentum-count-disp">0/0</span></div>
+        <div class="progress-meta"><span id="momentum-status">Ready</span><span id="momentum-count-disp"></span></div>
         <div class="gen-log" id="momentum-log"></div>
       </div>
     </div>
+    <div id="momentum-ranked-list" style="margin-bottom:16px"></div>
     
     <div class="section-toggle">
       <button class="toggle-btn active" id="momentum-tab-picks" onclick="switchSection('momentum','picks')">Picks</button>
@@ -436,25 +437,26 @@ nav {
     </div>
     <div class="generator">
       <div class="generator-header">
-        <div class="generator-title">Generate Picks — Quality AI</div>
+        <div class="generator-title">Ranked Candidates — Updated Daily</div>
         <div class="gen-controls">
           <select class="pick-count-sel" id="compounder-count">
-            <option value="1">1 pick</option>
-            <option value="3">3 picks</option>
-            <option value="5" selected>5 picks</option>
-            <option value="10">10 picks</option>
+            <option value="5">Deep dive top 5</option>
+            <option value="10" selected>Deep dive top 10</option>
+            <option value="15">Deep dive top 15</option>
+            <option value="20">Deep dive top 20</option>
           </select>
-          <button class="generate-btn compounder" id="compounder-genbtn" onclick="generatePicks('compounder')">✦ Generate</button>
-          <button class="monitor-btn" onclick="checkStops('compounder')">🔍 Check Stops/Targets</button>
+          <button class="generate-btn compounder" id="compounder-genbtn" onclick="generatePicks('compounder')">🔬 Deep Dive</button>
+          <button class="monitor-btn" onclick="checkStops('compounder')">🔍 Check Stops</button>
           <button class="monitor-btn" id="compounder-auto-btn" onclick="toggleAutoMonitor('compounder')">▶ Auto-Monitor: OFF</button>
         </div>
       </div>
       <div class="progress-wrap" id="compounder-progress">
         <div class="progress-track"><div class="progress-fill fill-compounder" id="compounder-bar"></div></div>
-        <div class="progress-meta"><span id="compounder-status">Starting…</span><span id="compounder-count-disp">0/0</span></div>
+        <div class="progress-meta"><span id="compounder-status">Ready</span><span id="compounder-count-disp"></span></div>
         <div class="gen-log" id="compounder-log"></div>
       </div>
     </div>
+    <div id="compounder-ranked-list" style="margin-bottom:16px"></div>
     
     <div class="section-toggle">
       <button class="toggle-btn active" id="compounder-tab-picks" onclick="switchSection('compounder','picks')">Picks</button>
@@ -497,25 +499,26 @@ nav {
     </div>
     <div class="generator">
       <div class="generator-header">
-        <div class="generator-title">Generate Picks — Catalyst AI</div>
+        <div class="generator-title">Ranked Candidates — Updated Daily</div>
         <div class="gen-controls">
           <select class="pick-count-sel" id="catalyst-count">
-            <option value="1">1 pick</option>
-            <option value="3">3 picks</option>
-            <option value="5" selected>5 picks</option>
-            <option value="10">10 picks</option>
+            <option value="5">Deep dive top 5</option>
+            <option value="10" selected>Deep dive top 10</option>
+            <option value="15">Deep dive top 15</option>
+            <option value="20">Deep dive top 20</option>
           </select>
-          <button class="generate-btn catalyst" id="catalyst-genbtn" onclick="generatePicks('catalyst')">✦ Generate</button>
-          <button class="monitor-btn" onclick="checkStops('catalyst')">🔍 Check Stops/Targets</button>
+          <button class="generate-btn catalyst" id="catalyst-genbtn" onclick="generatePicks('catalyst')">🔬 Deep Dive</button>
+          <button class="monitor-btn" onclick="checkStops('catalyst')">🔍 Check Stops</button>
           <button class="monitor-btn" id="catalyst-auto-btn" onclick="toggleAutoMonitor('catalyst')">▶ Auto-Monitor: OFF</button>
         </div>
       </div>
       <div class="progress-wrap" id="catalyst-progress">
         <div class="progress-track"><div class="progress-fill fill-catalyst" id="catalyst-bar"></div></div>
-        <div class="progress-meta"><span id="catalyst-status">Starting…</span><span id="catalyst-count-disp">0/0</span></div>
+        <div class="progress-meta"><span id="catalyst-status">Ready</span><span id="catalyst-count-disp"></span></div>
         <div class="gen-log" id="catalyst-log"></div>
       </div>
     </div>
+    <div id="catalyst-ranked-list" style="margin-bottom:16px"></div>
     
     <div class="section-toggle">
       <button class="toggle-btn active" id="catalyst-tab-picks" onclick="switchSection('catalyst','picks')">Picks</button>
