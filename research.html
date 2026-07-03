@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783047057 -->
+<!-- v1783047225 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1109,19 +1109,21 @@ async function generatePicks(strat) {
     // Held tickers
     var held = s.picks.map(function(p){ return p.ticker; });
 
-    // Use the pre-screened shortlist instead of blind random sampling -- already ranked by conviction
+    // Use the pre-screened shortlist — take only what we need to fill the request
     var available = shortlist.filter(function(t){
       return held.indexOf(t)<0 && s.declined.indexOf(t)<0;
     });
 
     if (available.length === 0) {
-      addLog('x No shortlisted candidates remain (all held/declined) — stopping batch');
+      addLog('x No shortlisted candidates remain — stopping batch');
       attempts = maxAttempts;
       setTimeout(runNext, 100);
       return;
     }
 
-    var sample = available.slice(0, 30); // already ranked, take top of what remains
+    // Only pick ONE ticker at a time from the shortlist — runNext loops itself
+    // This keeps each attempt cheap and stops as soon as we have enough picks
+    var sample = available.slice(0, 1);
 
     // Get current regime and rules
     var regStr = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
