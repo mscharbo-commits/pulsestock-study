@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783075179 -->
+<!-- v1783075202 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1074,31 +1074,29 @@ async function generatePicks(strat) {
 
   addLog('Loaded universe: '+universe.length+' tickers | Declined this gen: '+s.declined.length+' | Scoring weights: '+weights.length+' calibrated values');
 
-  // READ PRE-SCREENED CANDIDATES from Supabase (populated daily by Railway at 8am ET)
-  var today = new Date().toISOString().split('T')[0];
+  // USE PRE-RANKED CANDIDATES — already loaded on page, no API cost
   var heldNow = s.picks.filter(function(p){ return p.status !== 'closed'; }).map(function(p){ return p.ticker; });
-  statusEl.textContent = 'Loading pre-screened candidates...';
-  addLog('📋 Loading today\'s pre-screened candidates for '+strat+'...');
-  var screenStartTime = Date.now();
-  // Check today AND yesterday to handle UTC/local timezone differences
-  var yesterday = new Date(Date.now()-86400000).toISOString().split('T')[0];
-  var preScreened = await sbGet('pre_screened_candidates',
-    '?strategy_id=eq.'+strat+'&trading_date=gte.'+yesterday+'&order=rank.asc&limit=50');
+  var total = parseInt(document.getElementById(strat+'-count').value);
+  var allCandidates = s._rankedCandidates || [];
 
-  var shortlist = [];
-  if (preScreened && preScreened.length) {
-    shortlist = preScreened.map(function(c){ return c.ticker; })
-      .filter(function(t){ return heldNow.indexOf(t)<0 && s.declined.indexOf(t)<0; });
-    addLog('✓ Loaded '+shortlist.length+' pre-screened candidates');
-    addLog('Top candidates: '+shortlist.slice(0,10).join(', '));
-  } else {
-    addLog('⚠ No pre-screened candidates found — using random universe sample of 30');
-    shortlist = universe.filter(function(t){
-      return heldNow.indexOf(t)<0 && s.declined.indexOf(t)<0;
-    }).sort(function(){ return Math.random()-0.5; }).slice(0, 30);
+  if (!allCandidates.length) {
+    var yesterday = new Date(Date.now()-86400000).toISOString().split('T')[0];
+    var preScreened = await sbGet('pre_screened_candidates',
+      '?strategy_id=eq.'+strat+'&trading_date=gte.'+yesterday+'&order=rank.asc&limit=100');
+    allCandidates = preScreened ? preScreened.map(function(c){ return c.ticker; }) : [];
+    s._rankedCandidates = allCandidates;
   }
-  var screenElapsed = ((Date.now()-screenStartTime)/1000).toFixed(1);
-  addLog('Candidates ready in '+screenElapsed+'s — starting deep dives...');
+
+  var shortlist = allCandidates
+    .filter(function(t){ return heldNow.indexOf(t)<0 && s.declined.indexOf(t)<0; })
+    .slice(0, total);
+
+  addLog('🔬 Deep diving top '+shortlist.length+' ranked candidates: '+shortlist.join(', '));
+  if (!shortlist.length) {
+    btn.disabled = false;
+    toast('No candidates available — run scan.js first');
+    return;
+  }
 
   async function runNext() {
     if (published>=total || attempts>=maxAttempts) {
