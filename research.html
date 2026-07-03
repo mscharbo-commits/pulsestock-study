@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1782933824 -->
+<!-- v1783046658 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1107,10 +1107,12 @@ async function generatePicks(strat) {
   // PARALLEL DEEP DIVE: take top candidates from shortlist, fire all at once
   async function runParallelDeepDives() {
     var held = s.picks.map(function(p){ return p.ticker; });
-    // Run ALL shortlist candidates — no cap. This is the whole point: analyze the entire ranked universe.
+    // Cap at 4x requested picks to avoid burning credits on unnecessary calls
+    // e.g. for 1 pick: analyze 8 candidates. For 5 picks: analyze 20 candidates.
+    var maxCandidates = Math.max(total * 4, 8);
     var candidates = shortlist.filter(function(t){
       return held.indexOf(t)<0 && s.declined.indexOf(t)<0;
-    });
+    }).slice(0, maxCandidates);
 
     if (!candidates.length) {
       btn.disabled = false;
@@ -1153,7 +1155,7 @@ async function generatePicks(strat) {
       var sys = cfg.systemPrompt;
       var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '\n\n' + weightsPromptText;
       try {
-        var raw = await ai(sys, usr, 2000, false);
+        var raw = await ai(sys, usr, 3000, false);
         if(!raw) return null;
         var pick = pj(raw);
         if(!pick||!pick.ticker) return null;
@@ -1189,7 +1191,7 @@ async function generatePicks(strat) {
 
     // Fire deep dives in waves of 8 to avoid Anthropic rate limits
     // 8 concurrent is fast but won't overwhelm the API
-    var WAVE_SIZE = 8;
+    var WAVE_SIZE = 4; // smaller waves for reliability
     var startTime = Date.now();
     var results = [];
     for (var wi = 0; wi < candidates.length; wi += WAVE_SIZE) {
