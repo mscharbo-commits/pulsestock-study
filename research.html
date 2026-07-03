@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783074342 -->
+<!-- v1783074457 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -769,8 +769,8 @@ async function renderStats(strat) {
     return '<div class="stat-card" '+(st.id?'id="'+st.id+'"':'')+'><div class="stat-val" style="color:'+st.c+'">'+st.v+'</div><div class="stat-lbl">'+st.l+'</div></div>';
   }).join('');
 
-  // Calculate live unrealized P&L on open positions — await so it completes reliably
-  await calculateLivePnl(strat, open, realizedPnl);
+  // Delay P&L calculation to avoid rate limit collision with other price fetches on load
+  setTimeout(function(){ calculateLivePnl(strat, open, realizedPnl); }, 3000);
 }
 
 async function calculateLivePnl(strat, openPicks, realizedPnl) {
@@ -1072,6 +1072,7 @@ async function generatePicks(strat) {
 
   // READ PRE-SCREENED CANDIDATES from Supabase (populated daily by Railway at 8am ET)
   var today = new Date().toISOString().split('T')[0];
+  var heldNow = s.picks.filter(function(p){ return p.status !== 'closed'; }).map(function(p){ return p.ticker; });
   statusEl.textContent = 'Loading pre-screened candidates...';
   addLog('📋 Loading today\'s pre-screened candidates for '+strat+'...');
   var screenStartTime = Date.now();
