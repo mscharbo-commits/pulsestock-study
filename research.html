@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783047494 -->
+<!-- v1783047529 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1070,26 +1070,29 @@ async function generatePicks(strat) {
 
   addLog('Loaded universe: '+universe.length+' tickers | Declined this gen: '+s.declined.length+' | Scoring weights: '+weights.length+' calibrated values');
 
-  // FAST PRE-SCREEN: rank candidates in parallel BEFORE doing any expensive deep dives
-  var screenPool = (strat === 'catalyst' && catalystCandidates) ? catalystCandidates : universe;
-  var heldNow = s.picks.map(function(p){ return p.ticker; });
-  var screenSampleSize = Math.min(600, screenPool.length);
-  statusEl.textContent = 'Pre-screening '+screenSampleSize+' candidates in parallel...';
-  addLog('🔍 Pre-screening '+screenSampleSize+' candidates from a pool of '+screenPool.length+' (this runs ~15 parallel calls, takes 10-20 seconds)...');
+  // READ PRE-SCREENED CANDIDATES from Supabase (populated daily by Railway at 8am ET)
+  var today = new Date().toISOString().split('T')[0];
+  statusEl.textContent = 'Loading pre-screened candidates...';
+  addLog('📋 Loading today\'s pre-screened candidates for '+strat+'...');
   var screenStartTime = Date.now();
-  var regStrForScreen = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
-  var shortlist = strat === 'catalyst'
-    ? screenPool // catalyst pool is already small (earnings-confirmed) -- skip extra screening layer
-    : await fastPreScreen(strat, screenPool.sort(function(){return Math.random()-.5;}).slice(0, 600), heldNow, s.declined, regStrForScreen);
+  var preScreened = await sbGet('pre_screened_candidates',
+    '?strategy_id=eq.'+strat+'&trading_date=eq.'+today+'&order=rank.asc&limit=50');
 
-  if (!shortlist.length) {
-    shortlist = screenPool.sort(function(){return Math.random()-.5;}).slice(0,30);
-    addLog('⚠ Pre-screen returned no results — falling back to random sample of 30');
+  var shortlist = [];
+  if (preScreened && preScreened.length) {
+    shortlist = preScreened.map(function(c){ return c.ticker; })
+      .filter(function(t){ return heldNow.indexOf(t)<0 && s.declined.indexOf(t)<0; });
+    addLog('✓ Loaded '+shortlist.length+' pre-screened candidates');
+    addLog('Top candidates: '+shortlist.slice(0,10).join(', '));
+  } else {
+    addLog('⚠ No pre-screened candidates for today yet — using random universe sample');
+    addLog('To trigger a scan now visit: '+RAILWAY_URL+'/run-screen');
+    shortlist = universe.filter(function(t){
+      return heldNow.indexOf(t)<0 && s.declined.indexOf(t)<0;
+    }).sort(function(){ return Math.random()-0.5; }).slice(0, 30);
   }
-  shortlist = shortlist.filter(function(t,i,a){ return a.indexOf(t)===i; }); // dedupe
   var screenElapsed = ((Date.now()-screenStartTime)/1000).toFixed(1);
-  addLog('✓ Pre-screen complete in '+screenElapsed+'s: '+shortlist.length+' shortlisted candidates ready for deep dive');
-  addLog('Shortlist: '+shortlist.slice(0,20).join(', ')+(shortlist.length>20?' ...+'+(shortlist.length-20)+' more':''));
+  addLog('Candidates ready in '+screenElapsed+'s — starting deep dives...');
 
   async function runNext() {
     if (published>=total || attempts>=maxAttempts) {
