@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783047529 -->
+<!-- v1783074342 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1075,8 +1075,10 @@ async function generatePicks(strat) {
   statusEl.textContent = 'Loading pre-screened candidates...';
   addLog('📋 Loading today\'s pre-screened candidates for '+strat+'...');
   var screenStartTime = Date.now();
+  // Check today AND yesterday to handle UTC/local timezone differences
+  var yesterday = new Date(Date.now()-86400000).toISOString().split('T')[0];
   var preScreened = await sbGet('pre_screened_candidates',
-    '?strategy_id=eq.'+strat+'&trading_date=eq.'+today+'&order=rank.asc&limit=50');
+    '?strategy_id=eq.'+strat+'&trading_date=gte.'+yesterday+'&order=rank.asc&limit=50');
 
   var shortlist = [];
   if (preScreened && preScreened.length) {
@@ -1085,8 +1087,7 @@ async function generatePicks(strat) {
     addLog('✓ Loaded '+shortlist.length+' pre-screened candidates');
     addLog('Top candidates: '+shortlist.slice(0,10).join(', '));
   } else {
-    addLog('⚠ No pre-screened candidates for today yet — using random universe sample');
-    addLog('To trigger a scan now visit: '+RAILWAY_URL+'/run-screen');
+    addLog('⚠ No pre-screened candidates found — using random universe sample of 30');
     shortlist = universe.filter(function(t){
       return heldNow.indexOf(t)<0 && s.declined.indexOf(t)<0;
     }).sort(function(){ return Math.random()-0.5; }).slice(0, 30);
