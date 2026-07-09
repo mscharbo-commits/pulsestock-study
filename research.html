@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783630855 -->
+<!-- v1783631342 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -810,43 +810,48 @@ async function renderStats(strat) {
 async function calculateLivePnl(strat, openPicks, realizedPnl) {
   var unrealizedPnl = 0;
   var pricesLoaded = 0;
-  var closedCount = state[strat].closedTrades.length;
 
-  for (var i=0; i<openPicks.length; i++) {
+  if (!openPicks.length) {
+    updatePnlDisplay(strat, unrealizedPnl, realizedPnl, pricesLoaded, openPicks.length);
+    return;
+  }
+
+  // Bulk price fetch from Railway/Polygon — one call for all tickers
+  var tickers = openPicks.map(function(p){ return p.ticker; }).join(',');
+  var bulkPrices = {};
+  try {
+    var r = await fetch('https://pulsestock-backend-production.up.railway.app/prices?tickers='+tickers);
+    if (r.ok) bulkPrices = await r.json();
+  } catch(e) {}
+
+  for (var i = 0; i < openPicks.length; i++) {
     var p = openPicks[i];
     var entry = parseFloat(p.entry_price) || 0;
-    if (!entry) { console.log('[PnL] '+strat+' '+p.ticker+': no entry_price'); continue; }
-    var price = await getPrice(p.ticker); // global rate limiter handles spacing
-    if (!price) { console.log('[PnL] '+strat+' '+p.ticker+': price fetch failed (entry was $'+entry+')'); continue; }
+    if (!entry) continue;
+
+    // Use bulk price or cache
+    var price = null;
+    if (bulkPrices[p.ticker] && bulkPrices[p.ticker].c) {
+      price = parseFloat(bulkPrices[p.ticker].c);
+      pcache[p.ticker] = {p: price, t: Date.now()};
+    } else if (pcache[p.ticker]) {
+      price = pcache[p.ticker].p;
+    }
+
+    if (!price) {
+      console.log('[PnL] '+strat+' '+p.ticker+': price fetch failed (entry was $'+entry+')');
+      continue;
+    }
+
+    var ret = (price - entry) / entry * 100;
+    var posSize = 10000;
+    unrealizedPnl += (ret / 100) * posSize;
     pricesLoaded++;
-    var retPct = (price - entry) / entry * 100;
-    unrealizedPnl += 1000 * (retPct / 100);
-    console.log('[PnL] '+strat+' '+p.ticker+': entry=$'+entry+' current=$'+price+' ret='+retPct.toFixed(2)+'%');
-  }
-  console.log('[PnL] '+strat+' summary: '+pricesLoaded+'/'+openPicks.length+' priced, unrealized=$'+unrealizedPnl.toFixed(2)+', realized=$'+realizedPnl.toFixed(2));
-
-  var totalPnl = realizedPnl + unrealizedPnl;
-  var totalPositions = closedCount + pricesLoaded;
-  var totalInvested = totalPositions * 1000;
-  var pnlPct = totalInvested > 0 ? (totalPnl / totalInvested * 100) : 0;
-
-  var el = document.getElementById(strat+'-livepnl');
-  var card = document.getElementById(strat+'-pnl-card');
-  if (!el) return; // user navigated away
-
-  var sign = totalPnl >= 0 ? '+' : '';
-  var pctSign = pnlPct >= 0 ? '+' : '';
-  el.innerHTML = sign + '$' + Math.abs(totalPnl).toFixed(0)
-    + ' <span style="font-size:13px;opacity:.75">(' + pctSign + pnlPct.toFixed(1) + '%)</span>';
-  if (card) {
-    var valEl = card.querySelector('.stat-val');
-    if (valEl) valEl.style.color = totalPnl >= 0 ? 'var(--g)' : 'var(--r)';
+    console.log('[PnL] '+strat+' '+p.ticker+': entry=$'+entry+' current=$'+price+' ret='+ret.toFixed(2)+'%');
   }
 
-  // Show breakdown as title attribute (hover tooltip)
-  if (card) {
-    card.title = 'Realized: '+(realizedPnl>=0?'+':'')+'$'+realizedPnl.toFixed(0)+' | Unrealized: '+(unrealizedPnl>=0?'+':'')+'$'+unrealizedPnl.toFixed(0)+' ('+pricesLoaded+'/'+openPicks.length+' open positions priced) | Portfolio return: '+pctSign+pnlPct.toFixed(2)+'% on $'+totalInvested.toFixed(0)+' total deployed ($1000/position basis)';
-  }
+  console.log('[PnL] '+strat+' summary: '+pricesLoaded+'/'+openPicks.length+' priced, unrealized=$'+unrealizedPnl.toFixed(2));
+  updatePnlDisplay(strat, unrealizedPnl, realizedPnl, pricesLoaded, openPicks.length);
 }
 
 function renderGenSelector(strat) {
