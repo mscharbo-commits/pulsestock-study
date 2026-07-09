@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783633442 -->
+<!-- v1783633767 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1114,7 +1114,14 @@ async function generatePicks(strat) {
   addLog('Loaded universe: '+universe.length+' tickers | Declined this gen: '+s.declined.length+' | Scoring weights: '+weights.length+' calibrated values');
 
   // USE PRE-RANKED CANDIDATES — already loaded on page, no API cost
-  var heldNow = s.picks.filter(function(p){ return p.status !== 'closed'; }).map(function(p){ return p.ticker; });
+  // Include ALL open positions across all strategies to prevent duplicates
+  var heldNow = [];
+  ['momentum','compounder','catalyst'].forEach(function(st) {
+    if (state[st] && state[st].picks) {
+      state[st].picks.filter(function(p){ return p.status !== 'closed'; })
+        .forEach(function(p){ if (heldNow.indexOf(p.ticker) < 0) heldNow.push(p.ticker); });
+    }
+  });
   var total = parseInt(document.getElementById(strat+'-count').value);
   var allCandidates = s._rankedCandidates || [];
 
