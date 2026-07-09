@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783628446 -->
+<!-- v1783628818 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1055,6 +1055,10 @@ async function generatePicks(strat) {
   var s = state[strat];
   var cfg = strategyConfigs[strat];
   var total = parseInt(document.getElementById(strat+'-count').value);
+  // Lock strategy and generation at batch start — prevents drift during async operations
+  var LOCKED_STRAT = strat;
+  var LOCKED_GEN = s.currentGen;
+  console.log('[Generate] Strategy:', LOCKED_STRAT, 'Generation:', LOCKED_GEN, 'Requesting:', total, 'picks');
   var btn = document.getElementById(strat+'-genbtn');
   var progress = document.getElementById(strat+'-progress');
   var bar = document.getElementById(strat+'-bar');
@@ -1295,11 +1299,11 @@ async function generatePicks(strat) {
     }
 
     // Build clean DB record matching schema exactly
-    var genNum = s.currentGen;
+    var genNum = LOCKED_GEN; // use locked value — s.currentGen may have drifted
     var dbPick = {
       id: ticker+'_'+genNum+'_'+Date.now(),
       ticker: ticker,
-      strategy_id: strat,
+      strategy_id: LOCKED_STRAT, // use locked value
       gen_number: genNum,
       status: 'open',
       action: pick.action||'BUY',
@@ -1618,7 +1622,7 @@ async function runCritic(strat) {
     for (var i=0; i<items.length; i++) {
       statusEl.textContent = 'Saving postmortem '+(i+1)+'/'+items.length+' ('+items[i].ticker+')...';
       await sbPost('critiques', {
-        strategy_id: strat,
+        strategy_id: LOCKED_STRAT, // use locked value
         ticker: items[i].ticker,
         outcome: items[i].outcome,
         postmortem: items[i].postmortem,
