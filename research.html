@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783629877 -->
+<!-- v1783630855 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -653,6 +653,16 @@ var _fetchQueue = Promise.resolve();
 async function getPrice(sym) {
   if (pcache[sym] && (Date.now()-pcache[sym].t)<60000) return pcache[sym].p;
   try {
+    // Use Railway/Polygon for prices — no CORS, no rate limits
+    var r = await fetch('https://pulsestock-backend-production.up.railway.app/prices?tickers='+sym);
+    if (r.ok) {
+      var d = await r.json();
+      var p = d[sym] && d[sym].c ? parseFloat(d[sym].c) : null;
+      if (p) { pcache[sym] = {p:p, t:Date.now()}; return p; }
+    }
+  } catch(e) {}
+  try {
+    // Fallback to Finnhub proxy
     var q = await fh('quote?symbol='+sym);
     var p = q && q.c && q.c > 0 ? q.c : null;
     if (p) pcache[sym] = {p:p, t:Date.now()};
