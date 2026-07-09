@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783628818 -->
+<!-- v1783628899 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1321,26 +1321,27 @@ async function generatePicks(strat) {
       declined: false
     };
 
-    // Bulletproof save with 3 retries
+    // Save to Supabase with full visibility
+    console.log('[Save] Attempting to save:', JSON.stringify(dbPick));
     var saveResult = null;
-    for (var attempt = 0; attempt < 3; attempt++) {
-      try {
-        saveResult = await sbPost('study_picks', dbPick);
-        if (saveResult !== null && saveResult !== undefined) break;
-        await new Promise(function(r){ setTimeout(r, 500); });
-      } catch(e) {
-        addLog('x Save attempt '+(attempt+1)+' failed: '+e.message);
-        await new Promise(function(r){ setTimeout(r, 500); });
-      }
+    var saveError = null;
+    try {
+      saveResult = await sbPost('study_picks', dbPick);
+      console.log('[Save] Result:', JSON.stringify(saveResult));
+    } catch(e) {
+      saveError = e.message;
+      console.error('[Save] Error:', e);
     }
 
-    if (saveResult !== null && saveResult !== undefined) {
+    if (saveResult && !saveResult.error && (Array.isArray(saveResult) ? saveResult.length > 0 : true)) {
       s.picks.unshift(dbPick);
       published++;
       addLog('+ '+ticker+' @ $'+(dbPick.entry_price?dbPick.entry_price.toFixed(2):'?')+' — '+dbPick.confidence+'% conf — SAVED ✓');
       renderPicks(strat);
     } else {
-      addLog('x '+ticker+' — save failed after 3 attempts — check Supabase RLS');
+      var errMsg = saveError || (saveResult && saveResult.message) || (saveResult && saveResult.error) || JSON.stringify(saveResult);
+      addLog('x '+ticker+' — save failed: '+errMsg);
+      console.error('[Save] Failed:', errMsg, 'dbPick:', JSON.stringify(dbPick));
     }
     renderPicks(strat);
     setTimeout(runNext, 2000);
