@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783628433 -->
+<!-- v1783628446 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -657,28 +657,12 @@ var _fetchQueue = Promise.resolve();
 
 async function getPrice(sym) {
   if (pcache[sym] && (Date.now()-pcache[sym].t)<60000) return pcache[sym].p;
-  // Dedupe: if a request for this symbol is already in flight, wait for it instead of firing a new one
-  if (_inflightRequests[sym]) return _inflightRequests[sym];
-
-  var promise = (async function() {
-    // Global rate limiter: enforce minimum 250ms between ANY Finnhub calls across the whole app
-    _fetchQueue = _fetchQueue.then(async function() {
-      var now = Date.now();
-      var wait = Math.max(0, 250 - (now - _lastFetchTime));
-      if (wait > 0) await new Promise(function(res){ setTimeout(res, wait); });
-      _lastFetchTime = Date.now();
-    });
-    await _fetchQueue;
-
+  try {
     var q = await fh('quote?symbol='+sym);
-    var p = q&&q.c ? q.c : null;
+    var p = q && q.c && q.c > 0 ? q.c : null;
     if (p) pcache[sym] = {p:p, t:Date.now()};
-    delete _inflightRequests[sym];
     return p;
-  })();
-
-  _inflightRequests[sym] = promise;
-  return promise;
+  } catch(e) { return null; }
 }
 
 // ── GATE ──
