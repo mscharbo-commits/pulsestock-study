@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783631342 -->
+<!-- v1783631624 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1204,33 +1204,45 @@ async function generatePicks(strat) {
     addLog('→ '+ticker+': '+(nom.reason||'').substring(0,70));
 
     // Step 2: Price
-    // Fetch data: price via Railway, metrics + news via Finnhub
-    var [priceResult, metricResult, quoteResult, newsResult] = await Promise.all([
-      getPrice(ticker),
-      fh('stock/metric?symbol='+ticker+'&metric=all'),
-      fh('quote?symbol='+ticker),
-      fh('company-news?symbol='+ticker+'&from='+new Date(Date.now()-7*86400000).toISOString().split('T')[0]+'&to='+new Date().toISOString().split('T')[0])
+    // Fetch all data from main platform APIs in parallel — they use Finnhub + Polygon combined
+    addLog('→ Fetching data for '+ticker+'...');
+    var [metricsResp, newsResp, quoteResp] = await Promise.all([
+      fetch('https://pulsestock-nu.vercel.app/api/metrics?ticker='+ticker).then(function(r){ return r.ok ? r.json() : {}; }).catch(function(){ return {}; }),
+      fetch('https://pulsestock-nu.vercel.app/api/news?ticker='+ticker+'&days=7').then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; }),
+      fh('quote?symbol='+ticker)
     ]);
 
-    var price = priceResult;
-    if (price) addLog('→ Price: $'+price.toFixed(2));
+    var met = metricsResp || {};
+    var price = quoteResp && quoteResp.c > 0 ? quoteResp.c : null;
+    
+    // Try Railway/Polygon for price if Finnhub failed
+    if (!price) {
+      try {
+        var pr = await fetch('https://pulsestock-backend-production.up.railway.app/prices?tickers='+ticker);
+        if (pr.ok) {
+          var pd = await pr.json();
+          if (pd[ticker] && pd[ticker].c) price = parseFloat(pd[ticker].c);
+        }
+      } catch(e) {}
+    }
 
-    // Extract metrics from Finnhub
-    var mt = metricResult && metricResult.metric ? metricResult.metric : {};
-    var w52h = mt['52WeekHigh'] ? parseFloat(mt['52WeekHigh']) : null;
-    var w52l = mt['52WeekLow'] ? parseFloat(mt['52WeekLow']) : null;
-    var rsi = mt['rsi14d'] ? parseFloat(mt['rsi14d']).toFixed(1) : null;
-    var beta = mt['beta'] ? parseFloat(mt['beta']).toFixed(2) : null;
-    var shortDisplay = mt['shortRatio'] ? mt['shortRatio'].toFixed(1)+'d DTC' : null;
-    var floatShares = mt['float'] ? (mt['float']/1e6).toFixed(0)+'M' : null;
-    var revenueGrowth = mt['revenueGrowthTTMYoy'] ? (mt['revenueGrowthTTMYoy']*100).toFixed(1)+'%' : null;
-    var grossMargin = mt['grossMarginTTM'] ? (mt['grossMarginTTM']*100).toFixed(1)+'%' : null;
-    var peRatio = mt['peTTM'] ? parseFloat(mt['peTTM']).toFixed(1) : null;
+    if (price) {
+      pcache[ticker] = {p: price, t: Date.now()};
+      addLog('→ Price: $'+price.toFixed(2));
+    }
 
-    // VWAP from quote (prev close as daily proxy)
-    var vwap = quoteResult && quoteResult.c && quoteResult.pc
-      ? parseFloat(((quoteResult.h||quoteResult.c)+(quoteResult.l||quoteResult.c)+quoteResult.c)/3).toFixed(2)
-      : null;
+    // Extract rich metrics — main platform combines Finnhub + Polygon
+    var w52h = met.week52High ? parseFloat(met.week52High.replace('$','').replace(',','')) : null;
+    var w52l = met.week52Low ? parseFloat(met.week52Low.replace('$','').replace(',','')) : null;
+    var vwap = met.vwap ? parseFloat(met.vwap.replace('$','').replace(',','')) : null;
+    var rsi = met.rsi14 || null;
+    var beta = met.beta || null;
+    var shortDisplay = met.shortDisplay || null;
+    var floatShares = met.float || null;
+    var revenueGrowth = met.revenueGrowthYoy || null;
+    var grossMargin = met.grossMargin || null;
+    var peRatio = met.pe || null;
+    var sector = met.sector || '';
 
     // 52W range position and structure
     var rangePos = null;
@@ -1239,18 +1251,17 @@ async function generatePicks(strat) {
       rangePos = rp >= 0 && rp <= 200 ? rp.toFixed(0) : null;
     }
     var structureSignal = rangePos ? (parseFloat(rangePos) >= 65 ? 'UPTREND' : parseFloat(rangePos) <= 35 ? 'DOWNTREND' : 'RANGE-BOUND') : 'unknown';
-    var vwapBias = vwap && price ? (price > vwap ? 'ABOVE VWAP — institutional buyers in control' : 'BELOW VWAP — sellers in control') : 'unknown';
+    var vwapBias = vwap && price ? (price > vwap ? 'ABOVE VWAP — institutional buying' : 'BELOW VWAP — sellers in control') : 'unknown';
 
     // ATR-based stops
     var atrEstimate = w52h && w52l ? ((w52h - w52l) / 252 * 14) : (price ? price * 0.02 : null);
     var atrStop = atrEstimate && price ? (price - atrEstimate * 1.5).toFixed(2) : null;
     var atrTarget = atrEstimate && price ? (price + atrEstimate * 2.5).toFixed(2) : null;
 
-    // News context — top 4 recent headlines from Finnhub
-    var recentNews = Array.isArray(newsResult) && newsResult.length
-      ? newsResult.slice(0, 4).map(function(n){ return n.headline || n.summary || ''; }).filter(Boolean).join(' | ')
-      : 'No recent news';
-
+    // News — top 4 headlines
+    var recentNews = Array.isArray(newsResp) && newsResp.length
+      ? newsResp.slice(0, 4).map(function(n){ return n.headline || ''; }).filter(Boolean).join(' | ')
+      : 'No recent news'
     var techCtx = 'TECHNICALS (hierarchy: price structure > relative strength > VWAP > ATR > RSI confirmation):'
       + (price ? ' Price=$'+price.toFixed(2) : '')
       + (structureSignal !== 'unknown' ? ' STRUCTURE='+structureSignal : '')
