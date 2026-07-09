@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783632658 -->
+<!-- v1783633442 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1126,8 +1126,11 @@ async function generatePicks(strat) {
     s._rankedCandidates = allCandidates;
   }
 
+  // Only exclude currently OPEN positions — declined stocks from other gens get re-evaluated
+  // Each new generation has different rules so prior declines are irrelevant
+  var thisGenDeclined = s.declined || []; // declined in THIS generation only
   var shortlist = allCandidates
-    .filter(function(t){ return heldNow.indexOf(t)<0 && s.declined.indexOf(t)<0; })
+    .filter(function(t){ return heldNow.indexOf(t)<0 && thisGenDeclined.indexOf(t)<0; })
     .slice(0, total);
 
   addLog('🔬 Deep diving top '+shortlist.length+' ranked candidates: '+shortlist.join(', '));
@@ -1507,7 +1510,7 @@ async function loadAndDisplayRankedList(strat) {
     +'📊 '+candidates.length+' Ranked Candidates from Last Scan — Select top N to Deep Dive</div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
     +candidates.map(function(c, i){
-      var isHeld = held.indexOf(c.ticker) >= 0;
+      var isHeld = held.indexOf(c.ticker) >= 0; // only mark currently open positions
       return '<div style="background:var(--card);border:1px solid '+(isHeld?ac:'var(--border)')+';border-radius:8px;padding:6px 10px;font-size:12px'+(isHeld?';opacity:.5':'')+'">'
         +'<span style="font-family:DM Mono,monospace;font-weight:700;color:'+(isHeld?'var(--text2)':ac)+'">#'+(i+1)+' '+c.ticker+'</span>'
         +' <span style="color:var(--text2)">'+c.screen_score+'</span>'
