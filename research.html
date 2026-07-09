@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783631624 -->
+<!-- v1783632542 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -639,7 +639,7 @@ function pj(s) {
 }
 
 // ── FINNHUB ──
-async async function fh(ep) {
+async function fh(ep) {
   try {
     // Route through our Vercel proxy to avoid CORS restrictions
     var r = await fetch('/api/finnhub?endpoint='+encodeURIComponent(ep));
