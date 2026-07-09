@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>PulseStock Study</title>
-<!-- v1783630749 -->
+<!-- v1783630757 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{--bg:#F4F6F9;--s:#fff;--b:#E2E6ED;--t:#0D1117;--t2:#4A5568;--t3:#8A95A3;--a:#1A6BF5;--al:#EBF1FE;--g:#0D9B6B;--gb:#E6F7F1;--r:#D13F30;--rb:#FDECEA;--am:#B45309;--ab:#FEF3C7;--p:#7C3AED;--pb:#EDE9FE;--sh:0 1px 3px rgba(0,0,0,.06);}
@@ -516,7 +516,7 @@ function pj(s){
 }
 
 // FINNHUB
-function fh(ep){ return fetch('https://finnhub.io/api/v1/'+ep+'&token='+FHK).then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; }); }
+function fh(ep){ return fetch('/api/finnhub?endpoint='+encodeURIComponent(ep)).then(function(r){ return r.ok?r.json():null; }).catch(function(){ return null; }); }
 function getprice(sym){
   if(pcache[sym]&&(Date.now()-pcache[sym].t)<60000) return Promise.resolve(pcache[sym].p);
   return fh('quote?symbol='+sym).then(function(d){ var p=d&&d.c?d.c:null; if(p) pcache[sym]={p:p,t:Date.now()}; return p; }).catch(function(){ return null; });
