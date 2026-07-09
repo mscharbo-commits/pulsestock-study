@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783628899 -->
+<!-- v1783629877 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -641,13 +641,8 @@ function pj(s) {
 // ── FINNHUB ──
 async async function fh(ep) {
   try {
-    // Use main platform Finnhub key for higher rate limits
-    var key = 'd95c889r01qihq3l33k0d95c889r01qihq3l33kg';
-    var r = await fetch('https://finnhub.io/api/v1/'+ep+'&token='+key);
-    if (!r.ok) {
-      // Fallback to study key
-      r = await fetch('https://finnhub.io/api/v1/'+ep+'&token='+FHK);
-    }
+    // Route through our Vercel proxy to avoid CORS restrictions
+    var r = await fetch('/api/finnhub?endpoint='+encodeURIComponent(ep));
     return r.ok ? await r.json() : null;
   } catch(e){ return null; }
 }
