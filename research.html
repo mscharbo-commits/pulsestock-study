@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783632542 -->
+<!-- v1783632658 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -383,7 +383,7 @@ nav {
             <option value="15">Deep dive top 15</option>
             <option value="20">Deep dive top 20</option>
           </select>
-          <button class="generate-btn momentum" id="momentum-genbtn" onclick="generatePicks('momentum')">🔬 Deep Dive</button>
+          <button class="generate-btn momentum" id="momentum-genbtn" onclick="generatePicks('momentum')">✦ Generate</button>
           <button class="monitor-btn" onclick="checkStops('momentum')">🔍 Check Stops</button>
           <button class="monitor-btn" id="momentum-auto-btn" onclick="toggleAutoMonitor('momentum')">▶ Auto-Monitor: OFF</button>
         </div>
@@ -445,7 +445,7 @@ nav {
             <option value="15">Deep dive top 15</option>
             <option value="20">Deep dive top 20</option>
           </select>
-          <button class="generate-btn compounder" id="compounder-genbtn" onclick="generatePicks('compounder')">🔬 Deep Dive</button>
+          <button class="generate-btn compounder" id="compounder-genbtn" onclick="generatePicks('compounder')">✦ Generate</button>
           <button class="monitor-btn" onclick="checkStops('compounder')">🔍 Check Stops</button>
           <button class="monitor-btn" id="compounder-auto-btn" onclick="toggleAutoMonitor('compounder')">▶ Auto-Monitor: OFF</button>
         </div>
@@ -507,7 +507,7 @@ nav {
             <option value="15">Deep dive top 15</option>
             <option value="20">Deep dive top 20</option>
           </select>
-          <button class="generate-btn catalyst" id="catalyst-genbtn" onclick="generatePicks('catalyst')">🔬 Deep Dive</button>
+          <button class="generate-btn catalyst" id="catalyst-genbtn" onclick="generatePicks('catalyst')">✦ Generate</button>
           <button class="monitor-btn" onclick="checkStops('catalyst')">🔍 Check Stops</button>
           <button class="monitor-btn" id="catalyst-auto-btn" onclick="toggleAutoMonitor('catalyst')">▶ Auto-Monitor: OFF</button>
         </div>
@@ -1492,7 +1492,7 @@ async function loadAndDisplayRankedList(strat) {
   var today = new Date().toISOString().split('T')[0];
   var yesterday = new Date(Date.now()-86400000).toISOString().split('T')[0];
   var candidates = await sbGet('pre_screened_candidates',
-    '?strategy_id=eq.'+strat+'&trading_date=gte.'+yesterday+'&order=rank.asc&limit=100');
+    '?strategy_id=eq.'+strat+'&order=rank.asc&limit=100');
 
   if (!candidates || !candidates.length) {
     el.innerHTML = '<div style="font-size:12px;color:var(--text2);padding:8px 0">No scan data yet — run scan.js to populate candidates</div>';
