@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783627240 -->
+<!-- v1783627399 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -747,6 +747,41 @@ async function renderStrategyPage(strat) {
   await renderStats(strat);
   loadAndDisplayRankedList(strat); // show ranked candidates from last scan
 }
+
+// ── AUTO LEARNING LOOP ──
+// Runs automatically: checkStops → close trades → Critic → new rules → new generation
+async function autoLearningCycle(strat) {
+  var s = state[strat];
+  var closed = s.closedTrades || [];
+  if (!closed.length) return; // nothing to learn from yet
+
+  // Only run Critic if we have enough new closed trades (minimum 5)
+  var lastCritiqueTime = parseInt(localStorage.getItem('lastCritique_'+strat) || '0');
+  var hoursSinceLastCritique = (Date.now() - lastCritiqueTime) / (1000 * 60 * 60);
+
+  if (closed.length >= 5 && hoursSinceLastCritique > 24) {
+    console.log('[Auto] Running Critic for '+strat+' ('+closed.length+' closed trades)');
+    addLog('🧠 Auto-running Critic for '+strat+' ('+closed.length+' closed trades)...');
+    await runCritic(strat);
+    localStorage.setItem('lastCritique_'+strat, Date.now().toString());
+  }
+}
+
+// Schedule auto learning cycle every 6 hours when page is open
+setInterval(function() {
+  ['momentum','compounder','catalyst'].forEach(function(strat) {
+    autoLearningCycle(strat).catch(function(e){ console.error('[Auto]', e); });
+  });
+}, 6 * 60 * 60 * 1000);
+
+// Also run on page load after 30 seconds
+setTimeout(function() {
+  ['momentum','compounder','catalyst'].forEach(function(strat) {
+    if (state[strat] && state[strat].closedTrades) {
+      autoLearningCycle(strat).catch(function(e){ console.error('[Auto]', e); });
+    }
+  });
+}, 30000);
 
 async function renderStats(strat) {
   var s = state[strat];
@@ -1611,6 +1646,13 @@ async function runCritic(strat) {
     btn.disabled = false;
     btn.style.opacity = '1';
     btn.textContent = '🔬 Run Critic on Closed Trades';
+
+    // Auto-suggest new generation if significant rule changes detected
+    var newRules = state[strat].rules || [];
+    if (newRules.length > 0 && closedTradesAnalyzed >= 10) {
+      addLog('💡 Critic complete — consider starting a new generation to apply updated rules');
+      toast('Critic complete — '+newRules.length+' rules active. Ready for new generation.');
+    }
   }
 }
 
