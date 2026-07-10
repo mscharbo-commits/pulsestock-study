@@ -69,35 +69,55 @@ module.exports = async function handler(req, res) {
     }
     
     if (strategy === 'compounder') {
-      // Hard gates
-      if (!rangePos || rangePos < 40) return null;
+      // Hard gates — quality businesses only
+      if (!rangePos || rangePos < 35) return null;
       if (!rsi || rsi > 76) return null;
-      if (!r6m || r6m < 0) return null;                     // must be positive momentum
+      if (!r6m || r6m < 0) return null;
       if (dollarVol < 10) return null;
-      
+
+      const { roe, netMargin, revenueGrowth, grossMargin } = d;
       let s = 0;
-      // Range position (30 points)
-      if (rangePos >= 80) s += 30;
-      else if (rangePos >= 65) s += 22;
-      else if (rangePos >= 50) s += 14;
-      else s += 6;
-      
-      // RSI entry timing (25 points) — prefer 48-66 for compounder entry
-      if (rsi >= 50 && rsi <= 65) s += 25;
-      else if (rsi >= 45 && rsi <= 70) s += 16;
-      else s += 8;
-      
-      // VWAP positioning (20 points)
-      s += cur > vwap ? 20 : 8;
-      
-      // 6-month return — continuous (15 points)
-      s += Math.min(Math.max(r6m * 0.25, 0), 15);
-      
-      // Dollar volume (10 points)
-      if (dollarVol >= 50) s += 10;
-      else if (dollarVol >= 20) s += 7;
-      else s += 4;
-      
+
+      // QUALITY FUNDAMENTALS — primary differentiator (45 points)
+      // ROE: return on equity
+      if (roe) {
+        if (roe >= 25) s += 20;
+        else if (roe >= 15) s += 14;
+        else if (roe >= 10) s += 8;
+        else s += 2;
+      } else s += 5;
+
+      // Net margin: profitability
+      if (netMargin) {
+        if (netMargin >= 20) s += 15;
+        else if (netMargin >= 10) s += 10;
+        else if (netMargin >= 5) s += 5;
+        else s += 1;
+      } else s += 4;
+
+      // Revenue growth
+      if (revenueGrowth) {
+        if (revenueGrowth >= 0.20) s += 10;
+        else if (revenueGrowth >= 0.10) s += 7;
+        else if (revenueGrowth >= 0.05) s += 4;
+        else s += 1;
+      } else s += 3;
+
+      // TECHNICAL ENTRY (35 points)
+      if (rangePos >= 75) s += 15;
+      else if (rangePos >= 55) s += 10;
+      else s += 5;
+
+      if (rsi >= 48 && rsi <= 65) s += 12;
+      else if (rsi >= 42 && rsi <= 70) s += 8;
+      else s += 3;
+
+      s += cur > vwap ? 8 : 3;
+
+      // MOMENTUM — secondary (20 points)
+      s += Math.min(Math.max(r6m * 0.15, 0), 12);
+      s += dollarVol >= 50 ? 8 : dollarVol >= 20 ? 5 : 2;
+
       return s;
     }
     
