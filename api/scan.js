@@ -82,7 +82,7 @@ module.exports = async function handler(req, res) {
     if ((r.v * r.c) < 5e6) continue;
 
     // Polygon candle history for RSI + 6m return
-    const hist = await sf(`https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${yearAgo}/${today}?adjusted=true&sort=asc&limit=130`, {
+    const hist = await sf(`https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${yearAgo}/${today}?adjusted=true&sort=asc&limit=260`, {
       headers: { 'Authorization': `Bearer ${POLYGON}` }
     });
     const bars = hist?.results || [];
@@ -93,18 +93,27 @@ module.exports = async function handler(req, res) {
     const closes = bars.map(b => b.c);
     const high52 = Math.max(...bars.map(b => b.h));
     const low52 = Math.min(...bars.map(b => b.l));
-    const rangePos = high52 > low52 ? (cur - low52) / (high52 - low52) * 100 : null;
+    const rangePos = high52 > low52 ? Math.min((cur - low52) / (high52 - low52) * 100, 100) : null;
     const pctFromHigh = high52 > 0 ? (cur - high52) / high52 * 100 : null;
     const pctAboveLow = low52 > 0 ? (cur - low52) / low52 * 100 : null;
     const r6m = closes.length >= 126 ? (cur - closes[closes.length-126]) / closes[closes.length-126] * 100 : null;
 
     // RSI
-    let gains = 0, losses = 0;
+    // Wilder's RSI - proper calculation using 14 period
+    let avgGain = 0, avgLoss = 0;
+    // First average
+    for (let j = 1; j <= 14; j++) {
+      const diff = closes[closes.length - 14 - 14 + j] - closes[closes.length - 14 - 14 + j - 1];
+      if (diff > 0) avgGain += diff; else avgLoss -= diff;
+    }
+    avgGain /= 14; avgLoss /= 14;
+    // Smooth
     for (let j = closes.length - 14; j < closes.length; j++) {
       const diff = closes[j] - closes[j-1];
-      if (diff > 0) gains += diff; else losses -= diff;
+      avgGain = (avgGain * 13 + (diff > 0 ? diff : 0)) / 14;
+      avgLoss = (avgLoss * 13 + (diff < 0 ? -diff : 0)) / 14;
     }
-    const rsi = losses === 0 ? 100 : parseFloat((100 - 100/(1+(gains/14)/(losses/14))).toFixed(1));
+    const rsi = avgLoss === 0 ? 100 : parseFloat((100 - 100/(1+avgGain/avgLoss)).toFixed(1));
 
     // Finnhub metrics for fundamentals
     const met = FINNHUB ? await sf(`https://finnhub.io/api/v1/stock/metric?symbol=${ticker}&metric=all&token=${FINNHUB}`) : null;
