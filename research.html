@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783649189 -->
+<!-- v1783650316 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -353,9 +353,11 @@ nav {
     <div class="nav-tab" onclick="showPage('gen-compare')">📊 Gen Compare</div>
     <div class="nav-tab" onclick="showPage('strategy-compare')">⚖️ Strategy Compare</div>
     <div class="nav-right">
+      <button onclick="runBrowserScan()" style="background:#f97316;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:13px;margin-right:8px" id="run-scan-btn">⚡ Run Scan</button>
       <div class="regime-pill" id="regime-pill">Bull Low Vol</div>
     </div>
   </nav>
+  <div id="scan-log" style="display:none;position:fixed;bottom:20px;right:20px;width:360px;max-height:180px;overflow-y:auto;background:#1a1a2e;border:1px solid #f97316;border-radius:8px;padding:12px;font-size:11px;font-family:monospace;z-index:9999;color:#e2e8f0"></div>
 
   <!-- Momentum Growth -->
   <div class="page active" id="page-momentum">
