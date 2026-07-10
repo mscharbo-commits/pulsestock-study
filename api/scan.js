@@ -186,7 +186,17 @@ module.exports = async function handler(req, res) {
     const met = FINNHUB ? await sf(`https://finnhub.io/api/v1/stock/metric?symbol=${ticker}&metric=all&token=${FINNHUB}`) : null;
     const m = met?.metric || {};
 
-    const d = { cur, vwap, rangePos, pctFromHigh, pctAboveLow, rsi, r6m, dollarVol: r.v * cur / 1e6 };
+    const d = { 
+      cur, vwap, rangePos, pctFromHigh, pctAboveLow, rsi, r6m, 
+      dollarVol: r.v * cur / 1e6,
+      // Fundamentals from Finnhub
+      roe: m.roeTTM || null,
+      netMargin: m.netProfitMarginTTM || null,
+      revenueGrowth: m.revenueGrowthTTMYoy || null,
+      grossMargin: m.grossMarginTTM || null,
+      debtEquity: m.totalDebt2TotalEquityAnnual || null,
+      peRatio: m.peTTM || null
+    };
 
     for (const strat of ['momentum', 'compounder', 'catalyst']) {
       let raw = scoreStock(d, strat);
