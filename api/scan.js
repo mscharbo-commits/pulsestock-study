@@ -31,40 +31,112 @@ module.exports = async function handler(req, res) {
 
   function scoreStock(d, strategy) {
     const { cur, vwap, rangePos, pctFromHigh, pctAboveLow, rsi, r6m, dollarVol } = d;
+    
     if (strategy === 'momentum') {
-      if (!cur || !vwap || cur <= vwap) return null;
-      if (!rangePos || rangePos < 55) return null;
-      if (!pctFromHigh || pctFromHigh < -25) return null;
-      if (!rsi || rsi < 50 || rsi > 80) return null;
-      if (!r6m || r6m < 5) return null;
-      if (dollarVol < 10) return null;
-      let s = Math.min(rangePos * 0.3, 25);
-      s += pctFromHigh >= -10 ? 15 : pctFromHigh >= -20 ? 8 : 3;
-      s += (pctAboveLow||0) >= 30 ? 10 : 0;
-      s += rsi >= 55 && rsi <= 72 ? 15 : 8;
-      s += 15;
-      s += r6m >= 30 ? 20 : r6m >= 20 ? 14 : r6m >= 10 ? 8 : 4;
-      return s;
+      // Hard gates — must pass ALL
+      if (!cur || !vwap || cur <= vwap) return null;        // must be above VWAP
+      if (!rangePos || rangePos < 60) return null;           // must be in strong uptrend
+      if (!pctFromHigh || pctFromHigh < -20) return null;   // within 20% of 52W high
+      if (!rsi || rsi < 52 || rsi > 78) return null;        // RSI strength zone
+      if (!r6m || r6m < 8) return null;                     // must show momentum
+      if (dollarVol < 15) return null;                       // institutional liquidity
+      
+      // Scoring — each component truly differentiated
+      let s = 0;
+      // 6-month return is the PRIMARY momentum signal (40 points)
+      if (r6m >= 60) s += 40;
+      else if (r6m >= 40) s += 32;
+      else if (r6m >= 25) s += 24;
+      else if (r6m >= 15) s += 16;
+      else s += 8;
+      
+      // Range position (25 points) — higher in range = stronger trend
+      if (rangePos >= 90) s += 25;
+      else if (rangePos >= 80) s += 20;
+      else if (rangePos >= 70) s += 14;
+      else s += 8;
+      
+      // RSI quality (20 points) — ideal zone 55-70
+      if (rsi >= 58 && rsi <= 70) s += 20;
+      else if (rsi >= 54 && rsi <= 74) s += 14;
+      else s += 7;
+      
+      // Dollar volume (15 points) — institutional participation
+      if (dollarVol >= 100) s += 15;
+      else if (dollarVol >= 50) s += 12;
+      else if (dollarVol >= 25) s += 8;
+      else s += 4;
+      
+      return s; // max theoretical = 100, but requires 60%+ 6m return + 90%+ range + perfect RSI + high volume
     }
+    
     if (strategy === 'compounder') {
+      // Hard gates
       if (!rangePos || rangePos < 40) return null;
-      if (!rsi || rsi > 78) return null;
-      let s = Math.min(rangePos * 0.35, 30);
-      s += rsi >= 45 && rsi <= 68 ? 20 : 10;
-      s += cur > vwap ? 20 : 0;
-      s += pctFromHigh >= -15 ? 15 : pctFromHigh >= -25 ? 8 : 3;
-      s += (r6m||0) >= 15 ? 15 : (r6m||0) >= 5 ? 8 : 0;
+      if (!rsi || rsi > 76) return null;
+      if (!r6m || r6m < 0) return null;                     // must be positive momentum
+      if (dollarVol < 10) return null;
+      
+      let s = 0;
+      // Range position (30 points)
+      if (rangePos >= 80) s += 30;
+      else if (rangePos >= 65) s += 22;
+      else if (rangePos >= 50) s += 14;
+      else s += 6;
+      
+      // RSI entry timing (25 points) — prefer 48-66 for compounder entry
+      if (rsi >= 50 && rsi <= 65) s += 25;
+      else if (rsi >= 45 && rsi <= 70) s += 16;
+      else s += 8;
+      
+      // VWAP positioning (20 points)
+      s += cur > vwap ? 20 : 8;
+      
+      // 6-month return (15 points) — steady growth preferred over explosive
+      if (r6m >= 30) s += 15;
+      else if (r6m >= 15) s += 12;
+      else if (r6m >= 5) s += 8;
+      else s += 3;
+      
+      // Dollar volume (10 points)
+      if (dollarVol >= 50) s += 10;
+      else if (dollarVol >= 20) s += 7;
+      else s += 4;
+      
       return s;
     }
+    
     if (strategy === 'catalyst') {
       if (!cur || !vwap || cur <= vwap) return null;
-      if (!rsi || rsi < 35 || rsi > 72) return null;
-      if (!rangePos || rangePos < 25 || rangePos > 92) return null;
-      const dev = (cur - vwap) / vwap * 100;
-      let s = dev <= 2 ? 30 : dev <= 5 ? 20 : 12;
-      s += rsi >= 50 && rsi <= 65 ? 30 : 18;
-      s += (100 - Math.abs(rangePos - 60)) * 0.25;
-      s += (r6m||0) >= 10 ? 12 : (r6m||0) >= 0 ? 6 : 0;
+      if (!rsi || rsi < 38 || rsi > 70) return null;
+      if (!rangePos || rangePos < 30 || rangePos > 90) return null;
+      if (dollarVol < 8) return null;
+      
+      const vwapDev = (cur - vwap) / vwap * 100;
+      let s = 0;
+      
+      // VWAP deviation (35 points) — just above VWAP is ideal
+      if (vwapDev <= 1.5) s += 35;
+      else if (vwapDev <= 3) s += 26;
+      else if (vwapDev <= 6) s += 16;
+      else s += 8;
+      
+      // RSI sweet spot (30 points) — 50-65 = room to run
+      if (rsi >= 52 && rsi <= 63) s += 30;
+      else if (rsi >= 45 && rsi <= 68) s += 20;
+      else s += 10;
+      
+      // Range position (20 points) — prefer mid-range
+      const distFromMid = Math.abs(rangePos - 62);
+      if (distFromMid <= 10) s += 20;
+      else if (distFromMid <= 20) s += 13;
+      else s += 6;
+      
+      // 6-month return (15 points)
+      if ((r6m||0) >= 15) s += 15;
+      else if ((r6m||0) >= 5) s += 10;
+      else if ((r6m||0) >= 0) s += 5;
+      
       return s;
     }
     return null;
