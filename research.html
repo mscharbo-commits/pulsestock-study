@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783651009 -->
+<!-- v1783651743 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1567,8 +1567,10 @@ async function runBrowserScan() {
       var r = await fetch('/api/scan?batch=' + batch.join(',') + '&date=' + today);
       var batchResults = await r.json();
       
-      for (var strat of ['momentum', 'compounder', 'catalyst']) {
-        if (batchResults[strat]) allResults[strat] = allResults[strat].concat(batchResults[strat]);
+      var strats = ['momentum', 'compounder', 'catalyst'];
+      for (var si3 = 0; si3 < strats.length; si3++) {
+        var s3 = strats[si3];
+        if (batchResults[s3]) allResults[s3] = allResults[s3].concat(batchResults[s3]);
       }
       
       if ((i / BATCH) % 10 === 0) {
@@ -1582,7 +1584,9 @@ async function runBrowserScan() {
 
     // Save top results per strategy
     var saved = {};
-    for (var strat of ['momentum', 'compounder', 'catalyst']) {
+    var stratList2 = ['momentum', 'compounder', 'catalyst'];
+    for (var si2 = 0; si2 < stratList2.length; si2++) {
+      var strat = stratList2[si2];
       var scored = allResults[strat].sort(function(a,b){ return b.score - a.score; }).slice(0, 100);
       saved[strat] = scored.length;
       
