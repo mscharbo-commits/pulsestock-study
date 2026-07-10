@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783651743 -->
+<!-- v1783651836 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -353,11 +353,9 @@ nav {
     <div class="nav-tab" onclick="showPage('gen-compare')">📊 Gen Compare</div>
     <div class="nav-tab" onclick="showPage('strategy-compare')">⚖️ Strategy Compare</div>
     <div class="nav-right">
-      <button onclick="runBrowserScan()" style="background:#f97316;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:13px;margin-right:8px" id="run-scan-btn">⚡ Run Scan</button>
       <div class="regime-pill" id="regime-pill">Bull Low Vol</div>
     </div>
   </nav>
-  <div id="scan-log" style="display:none;position:fixed;bottom:20px;right:20px;width:360px;max-height:180px;overflow-y:auto;background:#1a1a2e;border:1px solid #f97316;border-radius:8px;padding:12px;font-size:11px;font-family:monospace;z-index:9999;color:#e2e8f0"></div>
 
   <!-- Momentum Growth -->
   <div class="page active" id="page-momentum">
@@ -1534,216 +1532,6 @@ async function loadAndDisplayRankedList(strat) {
   state[strat]._rankedCandidates = candidates.map(function(c){ return c.ticker; });
 }
 
-
-// ── UNIVERSE SCAN via API endpoint ──
-async function runBrowserScan() {
-  var btn = document.getElementById('run-scan-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning...'; }
-  
-  var logEl = document.getElementById('scan-log');
-  if (logEl) logEl.style.display = 'block';
-  
-  function log(msg) {
-    console.log('[Scan]', msg);
-    if (logEl) logEl.innerHTML += '<div>'+ new Date().toLocaleTimeString() +' '+ msg +'</div>';
-  }
-
-  try {
-    // Get universe from scan endpoint
-    var r0 = await fetch('/api/scan');
-    var info = await r0.json();
-    var tickers = info.tickers || [];
-    var today = new Date().toISOString().split('T')[0];
-    
-    log('Keys: Finnhub=' + info.keys.finnhub + ' Polygon=' + info.keys.polygon);
-    log('Universe: ' + tickers.length + ' tickers — processing in batches of 20...');
-
-    var allResults = { momentum: [], compounder: [], catalyst: [] };
-    var BATCH = 20;
-    var total = tickers.length;
-
-    for (var i = 0; i < total; i += BATCH) {
-      var batch = tickers.slice(i, i + BATCH);
-      var r = await fetch('/api/scan?batch=' + batch.join(',') + '&date=' + today);
-      var batchResults = await r.json();
-      
-      var strats = ['momentum', 'compounder', 'catalyst'];
-      for (var si3 = 0; si3 < strats.length; si3++) {
-        var s3 = strats[si3];
-        if (batchResults[s3]) allResults[s3] = allResults[s3].concat(batchResults[s3]);
-      }
-      
-      if ((i / BATCH) % 10 === 0) {
-        log('Progress: ' + Math.min(i + BATCH, total) + '/' + total + ' — Mom:' + allResults.momentum.length + ' Comp:' + allResults.compounder.length + ' Cat:' + allResults.catalyst.length);
-      }
-      if (btn) btn.textContent = '⏳ ' + Math.round(Math.min(i+BATCH,total)/total*100) + '%';
-      
-      // Small delay to avoid hammering
-      await new Promise(function(r){ setTimeout(r, 200); });
-    }
-
-    // Save top results per strategy
-    var saved = {};
-    var stratList2 = ['momentum', 'compounder', 'catalyst'];
-    for (var si2 = 0; si2 < stratList2.length; si2++) {
-      var strat = stratList2[si2];
-      var scored = allResults[strat].sort(function(a,b){ return b.score - a.score; }).slice(0, 100);
-      saved[strat] = scored.length;
-      
-      // Delete old and save new via scan endpoint with save=true
-      await sbPost('pre_screened_candidates', scored.map(function(c, i) {
-        return { strategy_id: strat, ticker: c.ticker, rank: i+1, screen_score: c.score,
-          screen_reason: (c.score>=85?'STRONG_BUY':c.score>=80?'BUY':'WATCH') + ' RSI:'+c.rsi+' Range:'+Math.round(c.rangePos||0)+'%',
-          price: c.price, rsi: c.rsi, range_position: c.rangePos, trading_date: today };
-      }));
-      
-      log(strat + ': saved ' + scored.length + ' candidates. Top: ' + scored.slice(0,3).map(function(c){ return c.ticker+'('+c.score+')'; }).join(', '));
-    }
-
-    log('✅ Scan complete! Hard refresh to see new candidates.');
-    toast('Scan complete! Refresh the page to see updated candidates.');
-    
-  } catch(e) {
-    log('Error: ' + e.message);
-  }
-  
-  if (btn) { btn.disabled = false; btn.textContent = '⚡ Run Scan'; }
-}
-  var btn = document.getElementById('run-scan-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Scanning...';
-  
-  var today = new Date().toISOString().split('T')[0];
-  var strategies = ['momentum', 'compounder', 'catalyst'];
-  var universe = await getUniverse();
-  
-  toast('Starting universe scan for ' + universe.length + ' tickers...');
-  addScanLog('⚡ Browser scan started — ' + universe.length + ' tickers × 3 strategies');
-  addScanLog('This will take 15-20 minutes. You can keep using the page while it runs.');
-
-  var allData = {};
-  var processed = 0;
-
-  // Phase 1: Quick filter using Finnhub quote
-  for (var i = 0; i < universe.length; i++) {
-    var ticker = universe[i];
-    processed++;
-
-    var quote = await fh('quote?symbol=' + ticker);
-    if (!quote || !quote.c || quote.c < 5) continue;
-
-    // Get metrics
-    var met = await fh('stock/metric?symbol=' + ticker + '&metric=all');
-    var m = met && met.metric ? met.metric : {};
-
-    var price = quote.c;
-    var w52h = m['52WeekHigh'] ? parseFloat(m['52WeekHigh']) : null;
-    var w52l = m['52WeekLow'] ? parseFloat(m['52WeekLow']) : null;
-    var rsi = m['rsi14d'] ? parseFloat(m['rsi14d']) : null;
-    var beta = m['beta'] ? parseFloat(m['beta']) : null;
-
-    if (!w52h || !w52l || !rsi) continue;
-
-    var rangePos = w52h > w52l ? ((price - w52l) / (w52h - w52l) * 100) : null;
-    var pctFromHigh = w52h > 0 ? ((price - w52h) / w52h * 100) : null;
-    var pctAboveLow = w52l > 0 ? ((price - w52l) / w52l * 100) : null;
-    var vwapAbove = price > quote.pc; // prev close as VWAP proxy
-
-    // Quick pre-filter
-    if (!rangePos || rangePos < 30) continue; // not in uptrend
-    
-    allData[ticker] = { price, w52h, w52l, rsi, beta, rangePos, pctFromHigh, pctAboveLow, vwapAbove };
-
-    if (processed % 100 === 0) {
-      addScanLog('Phase 1: ' + processed + '/' + universe.length + ' — ' + Object.keys(allData).length + ' candidates');
-      btn.textContent = '⏳ ' + Math.round(processed/universe.length*100) + '%';
-    }
-
-    await new Promise(function(r){ setTimeout(r, 300); }); // rate limit
-  }
-
-  addScanLog('✓ Phase 1 complete: ' + Object.keys(allData).length + ' candidates');
-
-  // Phase 2: Score and save per strategy
-  for (var si = 0; si < strategies.length; si++) {
-    var strat = strategies[si];
-    var scored = [];
-
-    for (var ticker in allData) {
-      var d = allData[ticker];
-      var score = 0;
-
-      if (strat === 'momentum') {
-        if (d.rangePos < 55) continue;
-        if (d.pctFromHigh < -25) continue;
-        if (d.rsi < 50 || d.rsi > 80) continue;
-        score += Math.min(d.rangePos * 0.3, 25);
-        score += d.pctFromHigh >= -10 ? 15 : d.pctFromHigh >= -20 ? 8 : 3;
-        score += d.pctAboveLow >= 30 ? 10 : 0;
-        score += d.rsi >= 55 && d.rsi <= 72 ? 15 : 8;
-        score += d.vwapAbove ? 15 : 0;
-        if (d.beta && d.beta > 0.5 && d.beta < 2.5) score += 10;
-      } else if (strat === 'compounder') {
-        if (d.rangePos < 35) continue;
-        if (d.rsi > 78) continue;
-        score += Math.min(d.rangePos * 0.35, 30);
-        score += d.rsi >= 45 && d.rsi <= 68 ? 15 : 8;
-        score += d.vwapAbove ? 15 : 0;
-        score += d.pctFromHigh >= -15 ? 15 : 8;
-        if (d.beta && d.beta < 1.2) score += 10;
-      } else { // catalyst
-        if (!d.vwapAbove) continue;
-        if (d.rsi < 35 || d.rsi > 72) continue;
-        if (d.rangePos < 25 || d.rangePos > 90) continue;
-        score += 25; // above VWAP base
-        score += d.rsi >= 50 && d.rsi <= 65 ? 25 : 15;
-        score += (100 - Math.abs(d.rangePos - 60)) * 0.25;
-      }
-
-      // Unique offset
-      var hash = ticker.split('').reduce(function(a,c){ return a + c.charCodeAt(0); }, 0);
-      score += (hash % 100) / 1000;
-
-      if (score >= 70) {
-        scored.push({ ticker: ticker, score: parseFloat(score.toFixed(3)),
-          rsi: d.rsi, rangePos: d.rangePos });
-      }
-    }
-
-    scored.sort(function(a,b){ return b.score - a.score; });
-    var top = scored.slice(0, 100);
-
-    addScanLog(strat + ': ' + scored.length + ' pass → saving top ' + top.length);
-
-    // Clear old and save new
-    await sb('DELETE', 'pre_screened_candidates', null, '?strategy_id=eq.' + strat + '&trading_date=eq.' + today);
-    for (var j = 0; j < top.length; j++) {
-      var c = top[j];
-      var tier = c.score >= 85 ? 'STRONG_BUY' : c.score >= 80 ? 'BUY' : 'WATCH';
-      await sb('POST', 'pre_screened_candidates', {
-        strategy_id: strat, ticker: c.ticker, rank: j+1,
-        screen_score: c.score,
-        screen_reason: tier + ' Range:' + c.rangePos.toFixed(0) + '% RSI:' + c.rsi,
-        price: allData[c.ticker].price, rsi: c.rsi, trading_date: today
-      });
-    }
-  }
-
-  addScanLog('✅ Scan complete! Hard refresh to see new candidates.');
-  btn.disabled = false;
-  btn.textContent = '⚡ Run Scan';
-  toast('Scan complete! ' + Object.keys(allData).length + ' tickers analyzed.');
-}
-
-function addScanLog(msg) {
-  console.log('[Scan]', msg);
-  // Show in a toast or log area
-  var el = document.getElementById('scan-log');
-  if (el) {
-    el.innerHTML = el.innerHTML + '<div>' + new Date().toLocaleTimeString() + ' ' + msg + '</div>';
-    el.scrollTop = el.scrollHeight;
-  }
-}
 // ── SECTION TOGGLE (Picks / Critic / Learning Loop) ──
 async function switchSection(strat, section) {
   ['picks','critic','learning'].forEach(function(s){
