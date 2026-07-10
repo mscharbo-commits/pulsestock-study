@@ -83,7 +83,7 @@ export default async function handler(req) {
 
   // Process one batch of tickers passed as query param
   // ?batch=AAPL,MSFT,NVDA&date=2026-07-09&save=true
-  const url = new URL(req.url);
+  const url = new URL(req.url, 'https://pulsestock-study.vercel.app');
   const batch = (url.searchParams.get('batch') || '').split(',').filter(Boolean);
   const today = url.searchParams.get('date') || new Date().toISOString().split('T')[0];
   const yearAgo = new Date(Date.now() - 380*86400000).toISOString().split('T')[0];
