@@ -43,12 +43,10 @@ module.exports = async function handler(req, res) {
       
       // Scoring — each component truly differentiated
       let s = 0;
-      // 6-month return is the PRIMARY momentum signal (40 points)
-      if (r6m >= 60) s += 40;
-      else if (r6m >= 40) s += 32;
-      else if (r6m >= 25) s += 24;
-      else if (r6m >= 15) s += 16;
-      else s += 8;
+      // 6-month return — continuous scoring, primary differentiator (40 points)
+      // Each % of return adds 0.4 points, capped at 40
+      // This ensures DDOG+105% scores higher than BMO+32%
+      s += Math.min(r6m * 0.4, 40);
       
       // Range position (25 points) — higher in range = stronger trend
       if (rangePos >= 90) s += 25;
@@ -92,11 +90,8 @@ module.exports = async function handler(req, res) {
       // VWAP positioning (20 points)
       s += cur > vwap ? 20 : 8;
       
-      // 6-month return (15 points) — steady growth preferred over explosive
-      if (r6m >= 30) s += 15;
-      else if (r6m >= 15) s += 12;
-      else if (r6m >= 5) s += 8;
-      else s += 3;
+      // 6-month return — continuous (15 points)
+      s += Math.min(Math.max(r6m * 0.25, 0), 15);
       
       // Dollar volume (10 points)
       if (dollarVol >= 50) s += 10;
