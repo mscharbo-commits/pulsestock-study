@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783651836 -->
+<!-- v1783721419 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -353,6 +353,7 @@ nav {
     <div class="nav-tab" onclick="showPage('gen-compare')">📊 Gen Compare</div>
     <div class="nav-tab" onclick="showPage('strategy-compare')">⚖️ Strategy Compare</div>
     <div class="nav-right">
+      <button id="scan-btn" onclick="runBrowserScan()" style="background:#f97316;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-weight:700;cursor:pointer;margin-right:8px;font-size:12px">⚡ Run Scan</button>
       <div class="regime-pill" id="regime-pill">Bull Low Vol</div>
     </div>
   </nav>
@@ -1530,6 +1531,65 @@ async function loadAndDisplayRankedList(strat) {
 
   // Store for use by Deep Dive
   state[strat]._rankedCandidates = candidates.map(function(c){ return c.ticker; });
+}
+
+
+async function runBrowserScan() {
+  var btn = document.getElementById('scan-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 0%'; }
+  
+  try {
+    var r0 = await fetch('/api/scan');
+    var info = await r0.json();
+    var tickers = info.tickers || [];
+    var today = new Date().toISOString().split('T')[0];
+    var BATCH = 15;
+    var allMom = [], allComp = [], allCat = [];
+    
+    for (var i = 0; i < tickers.length; i += BATCH) {
+      var batch = tickers.slice(i, i + BATCH).join(',');
+      try {
+        var r = await fetch('/api/scan?batch='+batch+'&date='+today);
+        var res = await r.json();
+        if (res.momentum) allMom = allMom.concat(res.momentum);
+        if (res.compounder) allComp = allComp.concat(res.compounder);
+        if (res.catalyst) allCat = allCat.concat(res.catalyst);
+      } catch(e) {}
+      if (btn) btn.textContent = '⏳ '+Math.round((i+BATCH)/tickers.length*100)+'%';
+      await new Promise(function(r){ setTimeout(r, 100); });
+    }
+    
+    // Sort and save top 100 per strategy
+    var strategies = [
+      { name: 'momentum', data: allMom },
+      { name: 'compounder', data: allComp },
+      { name: 'catalyst', data: allCat }
+    ];
+    
+    for (var si = 0; si < strategies.length; si++) {
+      var strat = strategies[si].name;
+      var sorted = strategies[si].data.sort(function(a,b){ return b.score-a.score; }).slice(0,100);
+      await sb('DELETE', 'pre_screened_candidates', null, '?strategy_id=eq.'+strat+'&trading_date=eq.'+today);
+      for (var j = 0; j < sorted.length; j++) {
+        var c = sorted[j];
+        var tier = c.score>=85?'STRONG_BUY':c.score>=80?'BUY':'WATCH';
+        await sb('POST', 'pre_screened_candidates', {
+          strategy_id: strat, ticker: c.ticker, rank: j+1,
+          screen_score: c.score,
+          screen_reason: tier+' RSI:'+c.rsi+' Range:'+c.rangePos+'% R6m:'+c.r6m+'%',
+          price: c.price, rsi: c.rsi, range_position: c.rangePos, trading_date: today
+        });
+      }
+    }
+    
+    if (btn) btn.textContent = '⚡ Scan Done!';
+    toast('Scan complete! Hard refresh to see updated candidates.');
+    setTimeout(function(){ location.reload(); }, 2000);
+    
+  } catch(e) {
+    console.error('[Scan]', e);
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Run Scan'; }
+  }
 }
 
 // ── SECTION TOGGLE (Picks / Critic / Learning Loop) ──
