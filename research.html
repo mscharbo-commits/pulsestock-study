@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783650316 -->
+<!-- v1783651009 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1535,9 +1535,76 @@ async function loadAndDisplayRankedList(strat) {
 }
 
 
-// ── BROWSER-BASED UNIVERSE SCAN ──
-// Uses same APIs as the research page — no server needed, runs in browser
+// ── UNIVERSE SCAN via API endpoint ──
 async function runBrowserScan() {
+  var btn = document.getElementById('run-scan-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning...'; }
+  
+  var logEl = document.getElementById('scan-log');
+  if (logEl) logEl.style.display = 'block';
+  
+  function log(msg) {
+    console.log('[Scan]', msg);
+    if (logEl) logEl.innerHTML += '<div>'+ new Date().toLocaleTimeString() +' '+ msg +'</div>';
+  }
+
+  try {
+    // Get universe from scan endpoint
+    var r0 = await fetch('/api/scan');
+    var info = await r0.json();
+    var tickers = info.tickers || [];
+    var today = new Date().toISOString().split('T')[0];
+    
+    log('Keys: Finnhub=' + info.keys.finnhub + ' Polygon=' + info.keys.polygon);
+    log('Universe: ' + tickers.length + ' tickers — processing in batches of 20...');
+
+    var allResults = { momentum: [], compounder: [], catalyst: [] };
+    var BATCH = 20;
+    var total = tickers.length;
+
+    for (var i = 0; i < total; i += BATCH) {
+      var batch = tickers.slice(i, i + BATCH);
+      var r = await fetch('/api/scan?batch=' + batch.join(',') + '&date=' + today);
+      var batchResults = await r.json();
+      
+      for (var strat of ['momentum', 'compounder', 'catalyst']) {
+        if (batchResults[strat]) allResults[strat] = allResults[strat].concat(batchResults[strat]);
+      }
+      
+      if ((i / BATCH) % 10 === 0) {
+        log('Progress: ' + Math.min(i + BATCH, total) + '/' + total + ' — Mom:' + allResults.momentum.length + ' Comp:' + allResults.compounder.length + ' Cat:' + allResults.catalyst.length);
+      }
+      if (btn) btn.textContent = '⏳ ' + Math.round(Math.min(i+BATCH,total)/total*100) + '%';
+      
+      // Small delay to avoid hammering
+      await new Promise(function(r){ setTimeout(r, 200); });
+    }
+
+    // Save top results per strategy
+    var saved = {};
+    for (var strat of ['momentum', 'compounder', 'catalyst']) {
+      var scored = allResults[strat].sort(function(a,b){ return b.score - a.score; }).slice(0, 100);
+      saved[strat] = scored.length;
+      
+      // Delete old and save new via scan endpoint with save=true
+      await sbPost('pre_screened_candidates', scored.map(function(c, i) {
+        return { strategy_id: strat, ticker: c.ticker, rank: i+1, screen_score: c.score,
+          screen_reason: (c.score>=85?'STRONG_BUY':c.score>=80?'BUY':'WATCH') + ' RSI:'+c.rsi+' Range:'+Math.round(c.rangePos||0)+'%',
+          price: c.price, rsi: c.rsi, range_position: c.rangePos, trading_date: today };
+      }));
+      
+      log(strat + ': saved ' + scored.length + ' candidates. Top: ' + scored.slice(0,3).map(function(c){ return c.ticker+'('+c.score+')'; }).join(', '));
+    }
+
+    log('✅ Scan complete! Hard refresh to see new candidates.');
+    toast('Scan complete! Refresh the page to see updated candidates.');
+    
+  } catch(e) {
+    log('Error: ' + e.message);
+  }
+  
+  if (btn) { btn.disabled = false; btn.textContent = '⚡ Run Scan'; }
+}
   var btn = document.getElementById('run-scan-btn');
   btn.disabled = true;
   btn.textContent = '⏳ Scanning...';
