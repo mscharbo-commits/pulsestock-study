@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783728138 -->
+<!-- v1783728636 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1129,7 +1129,7 @@ async function generatePicks(strat) {
   if (!allCandidates.length) {
     var yesterday = new Date(Date.now()-86400000).toISOString().split('T')[0];
     var preScreened = await sbGet('pre_screened_candidates',
-      '?strategy_id=eq.'+strat+'&trading_date=gte.'+yesterday+'&order=rank.asc&limit=100');
+      '?strategy_id=eq.'+strat+'&order=rank.asc&limit=100');
     allCandidates = preScreened ? preScreened.map(function(c){ return c.ticker; }) : [];
     s._rankedCandidates = allCandidates;
   }
