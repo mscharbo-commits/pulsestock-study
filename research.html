@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783727161 -->
+<!-- v1783728090 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1273,8 +1273,9 @@ async function generatePicks(strat) {
     var recentNews = Array.isArray(newsResp) && newsResp.length
       ? newsResp.slice(0, 4).map(function(n){ return n.headline || ''; }).filter(Boolean).join(' | ')
       : 'No recent news'
-    var techCtx = 'TECHNICALS (hierarchy: price structure > relative strength > VWAP > ATR > RSI confirmation):'
+    var techCtx = 'MARKET DATA (technicals + fundamentals for deep analysis):'
       + (price ? ' Price=$'+price.toFixed(2) : '')
+      + (mktCap ? ' MktCap='+mktCap : '')
       + (structureSignal !== 'unknown' ? ' STRUCTURE='+structureSignal : '')
       + (rangePos ? ' 52W-Range='+rangePos+'%' : '')
       + (vwap ? ' VWAP=$'+vwap.toFixed(2) : '')
