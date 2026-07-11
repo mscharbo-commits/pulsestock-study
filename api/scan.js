@@ -223,6 +223,11 @@ module.exports = async function handler(req, res) {
       if (raw === null) continue;
       if (m.revenueGrowthTTMYoy > 0.1 && strat === 'momentum') raw += 5;
       if (m.roeTTM > 15 && strat === 'compounder') raw += 5;
+      // Catalyst: bonus for upcoming earnings in next 14 days
+      if (strat === 'catalyst' && req.query.earningsTickers) {
+        const earningsSet = new Set(req.query.earningsTickers.split(','));
+        if (earningsSet.has(ticker)) raw += 20;
+      }
       const hash = ticker.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
       const score = parseFloat(Math.min(raw + (hash%100)/1000, 100).toFixed(3));
       if (score >= 70) results[strat].push({ ticker, score, rsi, rangePos: parseFloat((rangePos||0).toFixed(1)), r6m: r6m ? parseFloat(r6m.toFixed(1)) : null, price: cur });
