@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783728090 -->
+<!-- v1783728125 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1253,6 +1253,9 @@ async function generatePicks(strat) {
     var revenueGrowth = met.revenueGrowthYoy || null;
     var grossMargin = met.grossMargin || null;
     var peRatio = met.pe || null;
+    var roe = met.roe || null;
+    var netMargin = met.netMargin || null;
+    var mktCap = met.mktCap || null;
     var sector = met.sector || '';
 
     // 52W range position and structure
