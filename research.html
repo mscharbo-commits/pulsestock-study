@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783731106 -->
+<!-- v1783731614 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1550,13 +1550,25 @@ async function runBrowserScan() {
     var info = await r0.json();
     var tickers = info.tickers || [];
     var today = new Date().toISOString().split('T')[0];
+    var future14 = new Date(Date.now() + 14*86400000).toISOString().split('T')[0];
     var BATCH = 15;
     var allMom = [], allComp = [], allCat = [];
+
+    // Fetch earnings calendar for catalyst scoring bonus
+    var earningsTickers = '';
+    try {
+      var calResp = await fh('calendar/earnings?from='+today+'&to='+future14);
+      var earningsArr = (calResp && calResp.earningsCalendar) ? calResp.earningsCalendar : [];
+      earningsTickers = earningsArr.map(function(e){ return e.symbol; }).filter(Boolean).join(',');
+      addScanLog('Earnings calendar: '+earningsArr.length+' companies reporting in next 14 days');
+    } catch(e) {}
     
     for (var i = 0; i < tickers.length; i += BATCH) {
       var batch = tickers.slice(i, i + BATCH).join(',');
       try {
-        var r = await fetch('/api/scan?batch='+batch+'&date='+today);
+        var scanUrl = '/api/scan?batch='+batch+'&date='+today;
+      if (earningsTickers) scanUrl += '&earningsTickers='+encodeURIComponent(earningsTickers.substring(0,2000));
+      var r = await fetch(scanUrl);
         var res = await r.json();
         if (res.momentum) allMom = allMom.concat(res.momentum);
         if (res.compounder) allComp = allComp.concat(res.compounder);
