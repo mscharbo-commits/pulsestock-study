@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783731614 -->
+<!-- v1783826623 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1734,7 +1734,7 @@ async function runCritic(strat) {
     for (var i=0; i<items.length; i++) {
       statusEl.textContent = 'Saving postmortem '+(i+1)+'/'+items.length+' ('+items[i].ticker+')...';
       await sbPost('critiques', {
-        strategy_id: LOCKED_STRAT, // use locked value
+        strategy_id: strat,
         ticker: items[i].ticker,
         outcome: items[i].outcome,
         postmortem: items[i].postmortem,
