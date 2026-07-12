@@ -1295,8 +1295,7 @@ async function generatePicks(strat) {
       + (netMargin ? ' NetMargin='+netMargin : '')
       + (mktCap ? ' MktCap='+mktCap : '')
       + ' | RECENT NEWS: ' + recentNews
-      + (paThesis ? ' | INITIAL-ANALYSIS: '+paThesis : '')
-      + (paSignals && paSignals.length ? ' | KEY-SIGNALS: '+paSignals.join(' | ') : '')
+
     // Step 4: Deep dive
     var sys = cfg.systemPrompt;
     var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '\n\n' + weightsPromptText;
