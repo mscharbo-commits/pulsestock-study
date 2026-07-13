@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783826623 -->
+<!-- v1783982946 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1137,8 +1137,16 @@ async function generatePicks(strat) {
   // Only exclude currently OPEN positions — declined stocks from other gens get re-evaluated
   // Each new generation has different rules so prior declines are irrelevant
   var thisGenDeclined = s.declined || []; // declined in THIS generation only
+  // Deduplicate candidates before slicing
+  var seen = {};
   var shortlist = allCandidates
-    .filter(function(t){ return heldNow.indexOf(t)<0 && thisGenDeclined.indexOf(t)<0; })
+    .filter(function(t){
+      if (heldNow.indexOf(t) >= 0) return false;
+      if (thisGenDeclined.indexOf(t) >= 0) return false;
+      if (seen[t]) return false;
+      seen[t] = true;
+      return true;
+    })
     .slice(0, total);
 
   addLog('🔬 Deep diving top '+shortlist.length+' ranked candidates: '+shortlist.join(', '));
