@@ -69,54 +69,31 @@ module.exports = async function handler(req, res) {
     }
     
     if (strategy === 'compounder') {
-      // Hard gates — quality businesses only
-      if (!rangePos || rangePos < 35) return null;
-      if (!rsi || rsi > 76) return null;
-      if (!r6m || r6m < 0) return null;
-      if (dollarVol < 10) return null;
+      // Pure technical filter — Sonnet finds fundamentals via web search during deep dive
+      // This ensures every stock in universe gets a fair shot
+      if (!rangePos || rangePos < 40) return null;     // must be in uptrend
+      if (!rsi || rsi < 40 || rsi > 78) return null;  // healthy RSI range
+      if (dollarVol < 5) return null;                   // minimum liquidity
+      if (!r6m || r6m < -10) return null;              // not in freefall
 
-      const { roe, netMargin, revenueGrowth, grossMargin } = d;
       let s = 0;
 
-      // QUALITY FUNDAMENTALS — primary differentiator (45 points)
-      // ROE: return on equity
-      if (roe) {
-        if (roe >= 25) s += 20;
-        else if (roe >= 15) s += 14;
-        else if (roe >= 10) s += 8;
-        else s += 2;
-      } else s += 5;
+      // Range position — price structure (35 points)
+      if (rangePos >= 80) s += 35;
+      else if (rangePos >= 65) s += 25;
+      else if (rangePos >= 50) s += 15;
+      else s += 8;
 
-      // Net margin: profitability
-      if (netMargin) {
-        if (netMargin >= 20) s += 15;
-        else if (netMargin >= 10) s += 10;
-        else if (netMargin >= 5) s += 5;
-        else s += 1;
-      } else s += 4;
+      // RSI — entry timing (25 points)
+      if (rsi >= 48 && rsi <= 65) s += 25;
+      else if (rsi >= 42 && rsi <= 72) s += 16;
+      else s += 8;
 
-      // Revenue growth
-      if (revenueGrowth) {
-        if (revenueGrowth >= 0.20) s += 10;
-        else if (revenueGrowth >= 0.10) s += 7;
-        else if (revenueGrowth >= 0.05) s += 4;
-        else s += 1;
-      } else s += 3;
+      // VWAP — institutional positioning (20 points)
+      s += cur > vwap ? 20 : 8;
 
-      // TECHNICAL ENTRY (35 points)
-      if (rangePos >= 75) s += 15;
-      else if (rangePos >= 55) s += 10;
-      else s += 5;
-
-      if (rsi >= 48 && rsi <= 65) s += 12;
-      else if (rsi >= 42 && rsi <= 70) s += 8;
-      else s += 3;
-
-      s += cur > vwap ? 8 : 3;
-
-      // MOMENTUM — secondary (20 points)
-      s += Math.min(Math.max(r6m * 0.15, 0), 12);
-      s += dollarVol >= 50 ? 8 : dollarVol >= 20 ? 5 : 2;
+      // 6-month return — momentum confirmation (20 points)
+      s += Math.min(Math.max(r6m * 0.2, 0), 20);
 
       return s;
     }
