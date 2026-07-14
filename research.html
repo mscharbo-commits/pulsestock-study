@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783985145 -->
+<!-- v1783993296 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1308,7 +1308,7 @@ async function generatePicks(strat) {
     var sys = cfg.systemPrompt;
     var usr = cfg.pickPrompt(ticker, regStr, rulesStr, techCtx) + '\n\n' + weightsPromptText;
 
-    var raw = await ai(sys, usr, 3500, false).catch(function(e){ return null; });
+    var raw = await ai(sys, usr, 3500, true).catch(function(e){ return null; }); // web search enabled for real-time data
     if (!raw) { addLog('x Deep dive failed'); setTimeout(runNext,1000); return; }
 
     var pick;
