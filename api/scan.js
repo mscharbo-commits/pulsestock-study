@@ -22,10 +22,68 @@ module.exports = async function handler(req, res) {
   const today = req.query.date || new Date().toISOString().split('T')[0];
   const yearAgo = new Date(Date.now() - 380*86400000).toISOString().split('T')[0];
 
-  // No batch = return universe + key status
+  // Curated universes per strategy — tight, high quality
+  const MOMENTUM_UNIVERSE = [
+    // AI/Semiconductors
+    'NVDA','AMD','AVGO','AMAT','KLAC','LRCX','MRVL','ARM','TSM','ASML',
+    'QCOM','TXN','INTC','MU','MPWR','ON','WOLF',
+    // Cloud/SaaS high growth
+    'NOW','CRM','ADBE','PANW','CRWD','DDOG','SNOW','PLTR','ZS','NET',
+    'FTNT','OKTA','HUBS','TEAM','WDAY','VEEV','MDB','GTLB',
+    // Fintech/Payments
+    'V','MA','PYPL','SQ','AFRM','UPST','COIN','HOOD','SOFI',
+    // Biotech momentum
+    'ISRG','DXCM','IDXX','ALGN','INSP','AXON','TMDX',
+    // Industrial momentum
+    'STRL','TRGP','GEV','VRT','ETN','PWR','ONTO',
+    // Consumer momentum  
+    'LULU','CELH','ELF','BOOT','DECK','RCL','UAL','DAL',
+    // AI infrastructure
+    'DELL','HPE','SMCI','ALAB','CRDO','CIEN',
+    // High momentum misc
+    'APP','TTD','RBLX','UBER','ABNB','DASH'
+  ];
+
+  const COMPOUNDER_UNIVERSE = [
+    // Quality moat businesses
+    'MSFT','AAPL','GOOGL','META','AMZN',
+    'V','MA','AXP','SPGI','MCO','MSCI','FICO',
+    'UNH','TMO','DHR','ISRG','ABT','SYK','EW',
+    'COST','WMT','HD','LOW','MCD','SBUX',
+    'NOW','CRM','ADBE','INTU','VEEV','PAYC',
+    'PANW','CRWD','FTNT',
+    'ODFL','CTAS','CPRT','POOL','WSO','ROP',
+    'CB','PGR','AJG','MMC',
+    'NVDA','AVGO','AMAT','KLAC','ASML',
+    'BRK.B','JPM','BAC','GS','BLK',
+    'LLY','ABBV','REGN','BMY',
+    'AMT','EQIX','PSA',
+    'AXON','TMDX','DXCM','IDXX',
+    'NKE','LULU','ELF'
+  ];
+
+  const CATALYST_UNIVERSE = [
+    // Earnings this week/next
+    'JPM','BAC','WFC','GS','MS','C','BLK',
+    'NFLX','TSLA','NVDA','ASML','TSM',
+    'JNJ','UNH','LLY','PFE',
+    'AMZN','GOOGL','META','MSFT','AAPL',
+    // High beta momentum
+    'PLTR','HOOD','COIN','AFRM','APP',
+    'CRWD','DDOG','SNOW','NET','ZS',
+    'UBER','ABNB','DASH',
+    'AMD','MU','AVGO','ARM',
+    'STRL','VRT','ALAB','CRDO'
+  ];
+
+  // No batch = return appropriate universe based on strategy param
   if (!batch.length) {
-    const uni = await sf(TICKER_URL);
-    res.status(200).json({ tickers: uni?.all || [], keys: { finnhub: !!FINNHUB, polygon: !!POLYGON } });
+    const strategy = req.query.strategy || 'momentum';
+    let universe;
+    if (strategy === 'compounder') universe = COMPOUNDER_UNIVERSE;
+    else if (strategy === 'catalyst') universe = CATALYST_UNIVERSE;
+    else universe = MOMENTUM_UNIVERSE;
+    res.status(200).json({ tickers: universe, keys: { finnhub: !!FINNHUB, polygon: !!POLYGON } });
     return;
   }
 
