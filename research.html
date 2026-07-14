@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783993296 -->
+<!-- v1783994323 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1191,7 +1191,9 @@ async function generatePicks(strat) {
     var sample = available.slice(0, 1);
 
     // Get current regime and rules
-    var regStr = 'Regime: Bull Low Vol — favor momentum, growth, sector rotation.';
+    // Build rich macro context — fetched fresh for each generate session
+    var macroCtx = window._macroCtx || 'Macro context loading...';
+    var regStr = macroCtx;
     var rulesStr = s.rules.length ? 'RULES (apply all): '+s.rules.slice(0,8).join(' | ') : 'No learned rules yet.';
     var heldStr = held.length ? 'BLACKLIST (already held — do NOT pick): '+held.join(',') : '';
     var catalystDateStr = '';
@@ -1619,6 +1621,76 @@ async function runBrowserScan() {
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Run Scan'; }
   }
 }
+
+
+// ── MACRO CONTEXT BUILDER ──
+// Fetches SPY, VIX, DXY, TNX, sector ETFs, global markets
+// Runs on page load and refreshes every 30 minutes
+async function buildMacroContext() {
+  try {
+    var symbols = ['SPY','QQQ','IWM','VIX','GLD','USO','TLT','UUP',
+                   'XLK','XLF','XLE','XLV','XLI','XLP','XLU','XLB','XLY','XLRE','XLC'];
+    
+    var quotes = await Promise.all(symbols.map(function(s) {
+      return fh('quote?symbol='+s).catch(function(){ return null; });
+    }));
+    
+    var spy = quotes[0], qqq = quotes[1], iwm = quotes[2], vix = quotes[3];
+    var gld = quotes[4], uso = quotes[5], tlt = quotes[6], uup = quotes[7];
+    var sectors = quotes.slice(8);
+    var sectorNames = ['Tech','Fin','Energy','Health','Indust','Staples','Utils','Materials','Discret','RE','Comm'];
+    
+    var pct = function(q) { return q && q.pc > 0 ? ((q.c - q.pc)/q.pc*100).toFixed(2) : null; };
+    
+    var spyRet = pct(spy);
+    var vixLevel = vix && vix.c ? vix.c.toFixed(1) : '?';
+    var regime = spyRet > 0.5 ? 'BULL' : spyRet < -0.5 ? 'BEAR' : 'NEUTRAL';
+    var vixSignal = parseFloat(vixLevel) > 25 ? 'HIGH VIX — risk-off, reduce sizing' : 
+                    parseFloat(vixLevel) > 18 ? 'ELEVATED VIX — caution' : 'LOW VIX — risk-on';
+
+    // Sector performance
+    var sectorPerf = sectors.map(function(q, i) {
+      var r = pct(q);
+      return { name: sectorNames[i], ret: r ? parseFloat(r) : 0 };
+    }).sort(function(a,b){ return b.ret - a.ret; });
+    
+    var leading = sectorPerf.slice(0,3).map(function(s){ return s.name+(s.ret>=0?'+':'')+s.ret+'%'; }).join(', ');
+    var lagging = sectorPerf.slice(-3).map(function(s){ return s.name+s.ret+'%'; }).join(', ');
+
+    // Bond/commodity context
+    var bondSignal = tlt && pct(tlt) ? (parseFloat(pct(tlt)) > 0 ? 'Bonds rallying — risk-off' : 'Bonds selling — risk-on') : '';
+    var goldSignal = gld && pct(gld) ? (parseFloat(pct(gld)) > 0.5 ? 'Gold up — inflation/uncertainty hedge' : '') : '';
+    var oilSignal = uso && pct(uso) ? 'Oil '+pct(uso)+'%' : '';
+    var dollarSignal = uup && pct(uup) ? (parseFloat(pct(uup)) > 0.3 ? 'Dollar strengthening — headwind for multinationals' : '') : '';
+
+    var ctx = 'MARKET REGIME: SPY'+(spyRet>=0?'+':'')+spyRet+'% ('+regime+')'
+      + ' | VIX='+vixLevel+' ('+vixSignal+')'
+      + ' | QQQ'+(pct(qqq)>=0?'+':'')+pct(qqq)+'%'
+      + ' | IWM'+(pct(iwm)>=0?'+':'')+pct(iwm)+'% (small caps)'
+      + ' | LEADING SECTORS: '+leading
+      + ' | LAGGING: '+lagging
+      + (bondSignal ? ' | BONDS: '+bondSignal : '')
+      + (goldSignal ? ' | GOLD: '+goldSignal : '')
+      + (oilSignal ? ' | OIL: '+oilSignal : '')
+      + (dollarSignal ? ' | USD: '+dollarSignal : '')
+      + ' | Use web_search for current global news, geopolitical events, and macro data before analyzing each stock.';
+
+    window._macroCtx = ctx;
+    console.log('[Macro]', ctx);
+    
+    // Update regime pill
+    var pill = document.getElementById('regime-pill');
+    if (pill) pill.textContent = regime + ' | VIX ' + vixLevel;
+    
+  } catch(e) {
+    console.error('[Macro]', e);
+    window._macroCtx = 'Market regime: Use web_search for current SPY, VIX, sector performance, and global macro data.';
+  }
+}
+
+// Run on load and refresh every 30 minutes
+buildMacroContext();
+setInterval(buildMacroContext, 30 * 60 * 1000);
 
 // ── SECTION TOGGLE (Picks / Critic / Learning Loop) ──
 async function switchSection(strat, section) {
