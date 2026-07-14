@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783994323 -->
+<!-- v1783994778 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1589,7 +1589,7 @@ async function runBrowserScan() {
       await new Promise(function(r){ setTimeout(r, 100); });
     }
     
-    // Sort and save top 100 per strategy
+    // Deduplicate and save top 100 per strategy
     var strategies = [
       { name: 'momentum', data: allMom },
       { name: 'compounder', data: allComp },
@@ -1598,7 +1598,17 @@ async function runBrowserScan() {
     
     for (var si = 0; si < strategies.length; si++) {
       var strat = strategies[si].name;
-      var sorted = strategies[si].data.sort(function(a,b){ return b.score-a.score; }).slice(0,100);
+      // Deduplicate — keep highest score per ticker
+      var seen = {};
+      var deduped = [];
+      var raw = strategies[si].data.sort(function(a,b){ return b.score-a.score; });
+      for (var di = 0; di < raw.length; di++) {
+        if (!seen[raw[di].ticker]) {
+          seen[raw[di].ticker] = true;
+          deduped.push(raw[di]);
+        }
+      }
+      var sorted = deduped.slice(0,100);
       await sb('DELETE', 'pre_screened_candidates', null, '?strategy_id=eq.'+strat+'&trading_date=eq.'+today);
       for (var j = 0; j < sorted.length; j++) {
         var c = sorted[j];
