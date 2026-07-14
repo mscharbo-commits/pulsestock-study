@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783995532 -->
+<!-- v1783995709 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1144,6 +1144,8 @@ async function generatePicks(strat) {
   // Each new generation has different rules so prior declines are irrelevant
   var thisGenDeclined = s.declined || []; // declined in THIS generation only
   // Deduplicate candidates before slicing
+  // Deep dive ALL candidates — total is how many we PUBLISH, not how many we analyze
+  // This way we never miss a gem at #87 just because we asked for 10 picks
   var seen = {};
   var shortlist = allCandidates
     .filter(function(t){
@@ -1152,8 +1154,8 @@ async function generatePicks(strat) {
       if (seen[t]) return false;
       seen[t] = true;
       return true;
-    })
-    .slice(0, total);
+    });
+  // Don't slice — analyze ALL candidates, publish up to total
 
   addLog('🔬 Deep diving top '+shortlist.length+' ranked candidates: '+shortlist.join(', '));
   if (!shortlist.length) {
