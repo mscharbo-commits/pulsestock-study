@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- v1783994778 -->
+<!-- v1783995134 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PulseStock Research</title>
@@ -1557,7 +1557,9 @@ async function runBrowserScan() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 0%'; }
   
   try {
-    var r0 = await fetch('/api/scan');
+    // Get current active strategy
+    var activeStrat = document.querySelector('.nav-tab.active')?.dataset?.strat || 'momentum';
+    var r0 = await fetch('/api/scan?strategy='+activeStrat);
     var info = await r0.json();
     var tickers = info.tickers || [];
     var today = new Date().toISOString().split('T')[0];
