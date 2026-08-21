@@ -9,6 +9,105 @@ const SUPABASE_URL = 'https://ttcprqkoibiztibhpsrp.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR0Y3BycWtvaWJpenRpYmhwc3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzNTk5NjcsImV4cCI6MjA5NTkzNTk2N30.kO-a0NYLQ0rrAV1V7Aj4O8Mwm7KFq2NPfIQl2uY5sDY';
 const CORS = {'Access-Control-Allow-Origin':'*','Content-Type':'application/json'};
 
+const AV_KEY = process.env.AV_KEY || '9D1A2PAECG3F11MG';
+
+// ALL macro/geo/thematic topics in ONE call — free tier, 1 call/day
+// Returns up to 1000 articles pre-tagged and pre-sentiment-scored
+// No Claude tokens needed for basic macro assessment
+async function getAlphaVantageMacro() {
+  const topics = [
+    'economy_macro',    // Fed, inflation, CPI, GDP, jobs, tariffs, rate decisions
+    'geopolitics',      // Trade war, China, sanctions, war, executive orders
+    'finance',          // Banking, capital markets
+    'mergers_and_acquisitions', // M&A, buyouts, deals
+    'earnings',         // ALL earnings releases across market — not just positions
+    'ipo',              // New listings
+    'technology',       // Tech sector
+    'manufacturing',    // Supply chain, trade
+    'energy_transportation', // Oil, commodities
+    'retail_wholesale'  // Consumer spending
+  ].join(',');
+
+  const url = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics=${topics}&limit=200&sort=LATEST&apikey=${AV_KEY}`;
+  
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 15000);
+    const r = await fetch(url, {signal: ctrl.signal});
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d.feed || [];
+  } catch(e) {
+    return null;
+  }
+}
+
+// Parse Alpha Vantage dump into structured macro context
+// No Claude needed — sentiment pre-scored, topics pre-tagged
+function parseMacroDump(articles) {
+  if (!articles || !articles.length) return null;
+
+  // Group by topic, filter relevance > 0.5
+  const byTopic = {};
+  const bearish = [];
+  const bullish = [];
+  const extremeAlerts = []; // sentiment > 0.5 or < -0.5
+
+  for (const a of articles) {
+    const score = parseFloat(a.overall_sentiment_score) || 0;
+    const topics = (a.topics || []).filter(t => parseFloat(t.relevance_score) > 0.5);
+    
+    for (const t of topics) {
+      if (!byTopic[t.topic]) byTopic[t.topic] = [];
+      byTopic[t.topic].push({
+        title: a.title,
+        summary: a.summary?.slice(0,300) || '',
+        sentiment: a.overall_sentiment_label,
+        score,
+        url: a.url,
+        time: a.time_published
+      });
+    }
+
+    if (score < -0.35) bearish.push({title: a.title, score, topics: topics.map(t=>t.topic)});
+    if (score > 0.35) bullish.push({title: a.title, score, topics: topics.map(t=>t.topic)});
+    if (Math.abs(score) > 0.5) extremeAlerts.push({title: a.title, score, summary: a.summary?.slice(0,200)});
+  }
+
+  // Build concise context string for Sonnet — only material items
+  const lines = [];
+  
+  if (extremeAlerts.length > 0) {
+    lines.push('⚠️ EXTREME SENTIMENT EVENTS:');
+    extremeAlerts.slice(0,3).forEach(a => 
+      lines.push(`  [${a.score > 0 ? 'BULLISH' : 'BEARISH'} ${Math.abs(a.score).toFixed(2)}] ${a.title}\n  ${a.summary}`)
+    );
+  }
+
+  // Top story per key topic
+  const keyTopics = ['economy_macro','geopolitics','earnings','mergers_and_acquisitions'];
+  for (const topic of keyTopics) {
+    const items = byTopic[topic];
+    if (items && items.length > 0) {
+      const top = items.sort((a,b) => Math.abs(b.score)-Math.abs(a.score))[0];
+      lines.push(`[${topic.toUpperCase()}] ${top.sentiment} (${top.score.toFixed(2)}): ${top.title}`);
+      if (top.summary) lines.push(`  ${top.summary}`);
+    }
+  }
+
+  return {
+    totalArticles: articles.length,
+    byTopic: Object.fromEntries(Object.entries(byTopic).map(([k,v]) => [k, v.length])),
+    bearishCount: bearish.length,
+    bullishCount: bullish.length,
+    extremeAlerts: extremeAlerts.length,
+    contextString: lines.join('\n'),
+    topBearish: bearish.slice(0,3),
+    topBullish: bullish.slice(0,3)
+  };
+}
+
+
 const COMPANY_KEYWORDS = {
   earnings:     ['earnings','EPS','revenue','guidance','beat','miss','outlook','quarterly','results'],
   financing:    ['convertible','offering','dilution','ATM','shelf','registration','raise','note','shares'],
@@ -271,10 +370,11 @@ export default async function handler(req) {
 
     // STEP 1: Macro context — fetch full article bodies
     log.push('Fetching macro context...');
-    const macroArticles = await getMacroContext();
-    const macroContext = macroArticles.map(a =>
-      `${a.title}\n${a.body.slice(0,600)}`
-    ).join('\n---\n');
+    // Alpha Vantage: ONE call covers ALL macro/geo/thematic topics
+    // Pre-sentiment-scored, no Claude tokens needed for basic assessment
+    const avArticles = await getAlphaVantageMacro();
+    const macroData = parseMacroDump(avArticles);
+    const macroContext = macroData?.contextString || '';
     log.push(`Macro: ${macroArticles.length} articles`);
 
     // STEP 2: Full universe
@@ -435,7 +535,7 @@ Conduct full Friday discovery analysis.`,
         estimatedCost: `$${cost} (Sonnet only)`,
         elapsed: `${elapsed}s`
       },
-      macroHeadlines: macroArticles.map(a=>a.title),
+      macroSummary: macroData ? {topics: macroData.byTopic, extremeAlerts: macroData.topBearish.slice(0,2).concat(macroData.topBullish.slice(0,2)).map(a=>a.title)} : null,
       topCandidates: deepDives.slice(0,10).map(d=>
         `${d.ticker} $$${d.price?.toFixed(2)} (${d.change>0?'+':''}${d.change?.toFixed(1)}%) score:${d.score}/10`
       ),
