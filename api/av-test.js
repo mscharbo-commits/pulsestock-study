@@ -6,40 +6,47 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS') return new Response('', {headers: CORS});
 
   try {
-    // Test 1: Simple single topic, small limit
-    const url1 = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics=economy_macro&limit=5&sort=LATEST&apikey=${AV_KEY}`;
+    const results = {};
 
-    // Test 2: No topic filter — just latest news
-    const url2 = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&limit=5&sort=LATEST&apikey=${AV_KEY}`;
+    // Test 1: Topics filter — sequential with 1.5s gap
+    const url1 = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&topics=economy_macro,geopolitics,earnings&limit=10&sort=LATEST&apikey=${AV_KEY}`;
+    const r1 = await fetch(url1).then(r => r.json()).catch(e => ({fetchError: e.message}));
+    results.test1_topics = {
+      note: r1.Note || r1.Information || r1['Error Message'] || null,
+      feedLength: r1.feed?.length ?? 'no feed key',
+      topicsAvailable: !!r1.feed,
+      sample: r1.feed?.slice(0,2).map(a => ({
+        title: a.title,
+        sentiment: a.overall_sentiment_label,
+        score: a.overall_sentiment_score,
+        topics: a.topics?.slice(0,3),
+        summary: a.summary?.slice(0,200)
+      })) || []
+    };
 
-    // Test 3: Ticker-based (known to work on some tiers)
-    const url3 = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=AAPL&limit=5&apikey=${AV_KEY}`;
+    // Wait 1.5s between calls
+    await new Promise(r => setTimeout(r, 1500));
 
-    const [r1, r2, r3] = await Promise.all([
-      fetch(url1).then(r => r.json()).catch(e => ({fetchError: e.message})),
-      fetch(url2).then(r => r.json()).catch(e => ({fetchError: e.message})),
-      fetch(url3).then(r => r.json()).catch(e => ({fetchError: e.message})),
-    ]);
+    // Test 2: Ticker-based — confirmed working
+    const url2 = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=AAPL,MSFT,NVDA,TSLA&limit=5&apikey=${AV_KEY}`;
+    const r2 = await fetch(url2).then(r => r.json()).catch(e => ({fetchError: e.message}));
+    results.test2_multi_ticker = {
+      note: r2.Note || r2.Information || null,
+      feedLength: r2.feed?.length ?? 'no feed key',
+      sample: r2.feed?.slice(0,2).map(a => ({
+        title: a.title,
+        sentiment: a.overall_sentiment_label,
+        score: a.overall_sentiment_score,
+        tickers: a.ticker_sentiment?.map(t => `${t.ticker}:${t.ticker_sentiment_label}`),
+        summary: a.summary?.slice(0,200)
+      })) || []
+    };
 
     return new Response(JSON.stringify({
-      test1_topics_economy_macro: {
-        keys: Object.keys(r1),
-        note: r1.Note || r1.Information || r1['Error Message'] || null,
-        feedLength: r1.feed?.length ?? 'no feed key',
-        raw: JSON.stringify(r1).slice(0, 500)
-      },
-      test2_no_filter: {
-        keys: Object.keys(r2),
-        note: r2.Note || r2.Information || r2['Error Message'] || null,
-        feedLength: r2.feed?.length ?? 'no feed key',
-        raw: JSON.stringify(r2).slice(0, 500)
-      },
-      test3_ticker_AAPL: {
-        keys: Object.keys(r3),
-        note: r3.Note || r3.Information || r3['Error Message'] || null,
-        feedLength: r3.feed?.length ?? 'no feed key',
-        raw: JSON.stringify(r3).slice(0, 500)
-      }
+      success: true,
+      callsUsed: 2,
+      freeCallsRemaining: '~23 of 25 today',
+      results
     }, null, 2), {headers: CORS});
 
   } catch(e) {
