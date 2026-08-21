@@ -1,23 +1,17 @@
 {
   "functions": {
-    "api/claude.js": {
-      "maxDuration": 60
-    },
-    "api/cron-scan.js": {
-      "maxDuration": 300
-    },
-    "api/cron-thesis.js": {
-      "maxDuration": 60
-    },
-    "api/scan.js": {
-      "maxDuration": 300
-    }
+    "api/claude.js": { "maxDuration": 60 },
+    "api/cron-daily.js": { "maxDuration": 300 },
+    "api/cron-friday.js": { "maxDuration": 300 },
+    "api/cron-postmortem.js": { "maxDuration": 120 },
+    "api/scan.js": { "maxDuration": 300 }
   },
   "routes": [
-    {
-      "src": "/research",
-      "dest": "/research.html"
-    }
+    { "src": "/research", "dest": "/research.html" }
   ],
-  "crons": []
+  "crons": [
+    { "path": "/api/cron-daily", "schedule": "31 13 * * 1-5" },
+    { "path": "/api/cron-friday?secret=pulsestock2026", "schedule": "30 20 * * 5" },
+    { "path": "/api/cron-postmortem", "schedule": "0 21 * * 1-5" }
+  ]
 }
