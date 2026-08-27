@@ -17,6 +17,9 @@
     },
     "api/gen4-scan.js": {
       "maxDuration": 300
+    },
+    "api/day-trade-scan.js": {
+      "maxDuration": 300
     }
   },
   "routes": [
@@ -37,6 +40,10 @@
     {
       "path": "/api/cron-postmortem",
       "schedule": "0 21 * * 1-5"
+    },
+    {
+      "path": "/api/day-trade-scan?secret=pulsestock2026",
+      "schedule": "0 14 * * 1-5"
     }
   ]
 }
