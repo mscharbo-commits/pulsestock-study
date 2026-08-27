@@ -475,7 +475,7 @@ module.exports = async function handler(req, res) {
     log.push('Phase 6: Day trade rules...');
     const rulePass = [];
     for (const s of withTechnicals) {
-      const check = checkDayTradeRules(s.score, s.score.technicals);
+      const check = checkDayTradeRules(s.score, s.score.technicals, mode);
       s.rules = check;
       if (check.allPass) {
         rulePass.push(s);
