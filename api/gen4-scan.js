@@ -324,7 +324,7 @@ async function haikuVeto(candidates) {
 export default async function handler(req) {
   if (req.method === 'OPTIONS') return new Response('', {headers: CORS});
   
-  const url = new URL(req.url);
+  const url = new URL(req.url, `https://${{req.headers.get('host') || 'localhost'}}`);
   const secret = url.searchParams.get('secret');
   const mode = url.searchParams.get('mode') || 'test'; // 'test' = 50 stocks, 'full' = all
   
