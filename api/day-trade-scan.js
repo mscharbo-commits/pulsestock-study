@@ -250,27 +250,32 @@ function scoreDayTrade(ticker, quote, intraday, daily, news) {
 }
 
 // ── DAY TRADE ENTRY RULES (all must pass) ──
-function checkDayTradeRules(score, quote) {
+function checkDayTradeRules(score, quote, mode) {
+  mode = mode || 'live';
+  const minGap = mode === 'test' ? 1.0 : 2.0;
+  const minRelVol = mode === 'test' ? 1.0 : 2.0;
+  const minATR = mode === 'test' ? 0.3 : 1.0;
+  const minScore = mode === 'test' ? 4.0 : 6.0;
   const rules = {};
   const t = score.technicals;
 
-  // Rule 1: Meaningful gap (>2% either direction)
-  rules.hasGap = Math.abs(t.gapPct) >= 2.0;
+  // Rule 1: Meaningful gap
+  rules.hasGap = Math.abs(t.gapPct) >= minGap;
 
-  // Rule 2: Relative volume >= 2x (real activity, not noise)
-  rules.relVolume = t.relativeVol >= 2.0;
+  // Rule 2: Relative volume
+  rules.relVolume = t.relativeVol >= minRelVol;
 
   // Rule 3: Price in tradeable range ($2-$200)
   rules.priceRange = t.price >= 2 && t.price <= 200;
 
-  // Rule 4: ATR% >= 1% (enough daily movement to trade)
-  rules.hasVolatility = t.atrPct >= 1.0;
+  // Rule 4: ATR%
+  rules.hasVolatility = t.atrPct >= minATR;
 
-  // Rule 5: Not on Death Spiral list (checked separately)
-  rules.notDeathSpiral = true; // Set to false if flagged
+  // Rule 5: Not on Death Spiral list
+  rules.notDeathSpiral = true;
 
-  // Rule 6: Composite score >= 6
-  rules.minScore = score.composite >= 6.0;
+  // Rule 6: Composite score
+  rules.minScore = score.composite >= minScore;
 
   const passed = Object.values(rules).filter(Boolean).length;
   return { rules, passed, total: Object.keys(rules).length, allPass: passed === Object.keys(rules).length };
@@ -331,6 +336,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
   const secret = req.query?.secret || '';
+  const mode = req.query?.mode || 'live';
   if (secret !== 'pulsestock2026') { res.status(401).json({error:'Unauthorized'}); return; }
 
   const log = [];
