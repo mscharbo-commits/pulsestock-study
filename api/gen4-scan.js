@@ -249,9 +249,20 @@ module.exports = async function handler(req, res) {
       .sort((a,b) => b.quantScore - a.quantScore);
     log.push(`After quant ≥6: ${scored.length} stocks`);
 
-    // PHASE 5: 7 RULES
+    // PHASE 5: 7 RULES — with debug
     log.push('Phase 5: 7 entry rules...');
-    const rulesPass = scored.filter(s => { const c = check7Rules(s.metrics, s.quote); s.rules=c; return c.allPass; });
+    const rulesPass = [];
+    for (const s of scored) {
+      const c = check7Rules(s.metrics, s.quote);
+      s.rules = c;
+      if (c.allPass) {
+        rulesPass.push(s);
+      } else {
+        const failed = Object.entries(c.rules).filter(([k,v]) => !v).map(([k]) => k);
+        const m = s.metrics || {};
+        log.push(`  ${s.ticker}(q=${s.quantScore}) FAILED:[${failed.join(',')}] price=${s.price?.toFixed(2)} ma50=${m['50DayMA']||'?'} ma200=${m['200DayMA']||'?'} revGrowth=${m.revenueGrowthTTMYoy||'?'} margin=${m.netMarginTTM||'?'} pe=${m.peBasicExclExtraTTM||m.peRatio||'?'} shares=${m.sharesOutstandingTTM||'?'}`);
+      }
+    }
     log.push(`After 7 rules: ${rulesPass.length} stocks`);
 
     // PHASE 6: SECTOR HEALTH
