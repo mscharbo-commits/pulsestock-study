@@ -25,9 +25,14 @@ async function getQuote(ticker) {
     const r = await fetch('https://finnhub.io/api/v1/quote?symbol=' + ticker + '&token=' + FHK);
     if (!r.ok) return null;
     const d = await r.json();
-    // Use current price (c) — this is real-time during market hours
-    // Fall back to previous close (pc) if current is 0
-    return d && d.c && d.c > 0 ? d.c : (d && d.pc ? d.pc : null);
+    if (!d || !d.c) return null;
+    return {
+      current: d.c > 0 ? d.c : d.pc,  // live price (real-time during market hours)
+      open:    d.o || d.c,              // today's open price
+      high:    d.h || d.c,              // today's high
+      low:     d.l || d.c,              // today's low
+      prev:    d.pc                     // previous close
+    };
   } catch (e) { return null; }
 }
 
@@ -63,24 +68,40 @@ export default async function handler(req, res) {
 
     for (const pick of openPicks) {
       results.checked++;
-      const price = await getQuote(pick.ticker);
-      if (!price) continue;
+      const quote = await getQuote(pick.ticker);
+      if (!quote) continue;
 
-      const stop = parseFloat(pick.stop_loss) || 0;
+      const stop   = parseFloat(pick.stop_loss)   || 0;
       const target = parseFloat(pick.target_price) || 0;
 
       let exitReason = null;
-      if (stop && price <= stop) exitReason = 'stop_hit';
-      else if (target && price >= target) exitReason = 'target_hit';
+      let exitPrice  = null;
+
+      // Stop loss: triggered if today's LOW crosses below stop
+      // Exit price = today's OPEN if it gapped below stop (worst case fill)
+      //            = stop price if it crossed intraday (best case fill at stop)
+      if (stop && quote.low <= stop) {
+        exitReason = 'stop_hit';
+        // If opened below stop — fill at open (gap down, no chance to exit at stop)
+        // If opened above stop — fill at stop (crossed intraday, could exit at stop)
+        exitPrice = quote.open <= stop ? quote.open : stop;
+      }
+      // Target: triggered if today's HIGH crosses above target
+      // Exit price = today's OPEN if it gapped above target
+      //            = target price if it crossed intraday
+      else if (target && quote.high >= target) {
+        exitReason = 'target_hit';
+        exitPrice = quote.open >= target ? quote.open : target;
+      }
 
       if (exitReason) {
         const entry = parseFloat(pick.entry_price) || 0;
-        const returnPct = entry ? ((price - entry) / entry * 100) : 0;
+        const returnPct = entry ? ((exitPrice - entry) / entry * 100) : 0;
 
         // Close the position
         await sbFetch('PATCH', 'study_picks', {
           status: 'closed',
-          exit_price: price,
+          exit_price: exitPrice,
           return_pct: parseFloat(returnPct.toFixed(2)),
           exit_reason: exitReason,
           exit_date: new Date().toISOString()
@@ -91,7 +112,7 @@ export default async function handler(req, res) {
           strategy_id: pick.strategy_id,
           ticker: pick.ticker,
           entry_price: entry,
-          exit_price: price,
+          exit_price: exitPrice,
           return_pct: parseFloat(returnPct.toFixed(2)),
           exit_reason: exitReason,
           portfolio: pick.strategy_id,
@@ -102,7 +123,7 @@ export default async function handler(req, res) {
         results.closed.push({
           ticker: pick.ticker,
           strategy: pick.strategy_id,
-          exit_price: price,
+          exit_price: exitPrice,
           return_pct: returnPct.toFixed(2),
           reason: exitReason
         });
