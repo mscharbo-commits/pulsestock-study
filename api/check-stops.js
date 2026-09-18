@@ -25,8 +25,23 @@ async function getQuote(ticker) {
     const r = await fetch('https://finnhub.io/api/v1/quote?symbol=' + ticker + '&token=' + FHK);
     if (!r.ok) return null;
     const d = await r.json();
-    return d && d.c ? d.c : null;
+    // Use current price (c) — this is real-time during market hours
+    // Fall back to previous close (pc) if current is 0
+    return d && d.c && d.c > 0 ? d.c : (d && d.pc ? d.pc : null);
   } catch (e) { return null; }
+}
+
+function isMarketHours() {
+  const now = new Date();
+  const et = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric', minute: 'numeric', hour12: false, weekday: 'short'
+  }).formatToParts(now);
+  const day  = et.find(p => p.type === 'weekday')?.value;
+  const hour = parseInt(et.find(p => p.type === 'hour')?.value);
+  const min  = parseInt(et.find(p => p.type === 'minute')?.value);
+  if (['Sat','Sun'].includes(day)) return false;
+  return (hour > 9 || (hour === 9 && min >= 30)) && hour < 16;
 }
 
 export default async function handler(req, res) {
@@ -36,6 +51,10 @@ export default async function handler(req, res) {
     // Allow manual testing without secret for now
   }
 
+  // Only run during market hours
+  if (!isMarketHours()) {
+    return res.status(200).json({ skipped: 'outside market hours' });
+  }
   const results = { checked: 0, closed: [], errors: [] };
 
   try {
